@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       ],
     },
     orderBy: [{ baseSymbol: "asc" }],
-    take: 20,
+    take: 100, // 🔹 increased for fuzzy matching
   });
 
   return NextResponse.json({
