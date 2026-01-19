@@ -3,9 +3,30 @@ type YahooQuote = {
   regularMarketPrice: number | null;
 };
 
-export async function fetchYahooQuote(symbol: string): Promise<YahooQuote> {
+export function toYahooSymbol(
+  baseSymbol: string,
+  exchange: string
+): string {
+  switch (exchange) {
+    case "NSE":
+    case "NSE_SME":
+      return `${baseSymbol}.NS`;
+    case "BSE":
+    case "BSE_SME":
+      return `${baseSymbol}.BO`;
+    default:
+      throw new Error(`Unsupported exchange: ${exchange}`);
+  }
+}
+
+export async function fetchYahooQuote(
+  baseSymbol: string,
+  exchange: string
+): Promise<YahooQuote> {
+  const yahooSymbol = toYahooSymbol(baseSymbol, exchange);
+
   const res = await fetch(
-    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`,
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbol}`,
     { cache: "no-store" }
   );
 
@@ -14,7 +35,7 @@ export async function fetchYahooQuote(symbol: string): Promise<YahooQuote> {
   }
 
   const data = await res.json();
-  const quote = data.quoteResponse.result[0];
+  const quote = data?.quoteResponse?.result?.[0];
 
   return {
     regularMarketOpen: quote?.regularMarketOpen ?? null,
