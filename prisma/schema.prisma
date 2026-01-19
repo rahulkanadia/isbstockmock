@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id        String   @id
+  id        String   @id            // Discord ID
   username  String
   avatarUrl String?
   createdAt DateTime @default(now())
@@ -17,16 +17,21 @@ model User {
 }
 
 model Symbol {
-  symbol   String  @id
-  name     String
-  isSME    Boolean
-  active   Boolean @default(true)
+  id         String   @id @default(cuid())
+  baseSymbol String
+  exchange   String   // NSE | BSE | NSE_SME | BSE_SME
+  name       String
+  active     Boolean  @default(true)
+
+  @@unique([baseSymbol, exchange])
 }
 
 model Pick {
   id         String   @id @default(cuid())
   userId     String
-  symbol     String
+
+  baseSymbol String
+  exchange   String
 
   entryDate  DateTime
   entryPrice Float
@@ -36,27 +41,29 @@ model Pick {
   pnlPercent Float?
 
   active     Boolean  @default(true)
-
   createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([baseSymbol, exchange])
 }
 
 model MonthlyChange {
   id        String   @id @default(cuid())
   userId    String
-  yearMonth String
+  yearMonth String   // YYYY-MM
   changedAt DateTime @default(now())
 
   @@unique([userId, yearMonth])
 }
 
 model DailyPrice {
-  id     String   @id @default(cuid())
-  symbol String
-  date   DateTime
-  open   Float
-  close  Float
+  id         String   @id @default(cuid())
+  baseSymbol String
+  exchange   String
+  date       DateTime
+  open       Float
+  close      Float
 
-  @@unique([symbol, date])
+  @@unique([baseSymbol, exchange, date])
 }
