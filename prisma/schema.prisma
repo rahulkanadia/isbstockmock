@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id
+  username  String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  picks Pick[]
+}
+
+model Symbol {
+  symbol   String  @id
+  name     String
+  isSME    Boolean
+  active   Boolean @default(true)
+}
+
+model Pick {
+  id         String   @id @default(cuid())
+  userId     String
+  symbol     String
+
+  entryDate  DateTime
+  entryPrice Float
+
+  exitDate   DateTime?
+  exitPrice  Float?
+  pnlPercent Float?
+
+  active     Boolean  @default(true)
+
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model MonthlyChange {
+  id        String   @id @default(cuid())
+  userId    String
+  yearMonth String
+  changedAt DateTime @default(now())
+
+  @@unique([userId, yearMonth])
+}
+
+model DailyPrice {
+  id     String   @id @default(cuid())
+  symbol String
+  date   DateTime
+  open   Float
+  close  Float
+
+  @@unique([symbol, date])
+}
