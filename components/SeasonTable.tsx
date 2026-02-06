@@ -1,74 +1,48 @@
 "use client";
-
 import { useRef } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Archive, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
-interface SeasonTableProps {
-  currentMonthIndex: number; // 0 = Jan
-  currentLeader: any;
-}
-
-export default function SeasonTable({ currentMonthIndex = 1, currentLeader }: SeasonTableProps) {
+export default function SeasonTable({ currentMonthIndex = 1 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (dir: 'left' | 'right') => {
-     if(scrollRef.current) {
-        scrollRef.current.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
-     }
+     scrollRef.current?.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
   };
 
   return (
-    <div className="relative h-full w-full rounded-3xl bg-white p-4 shadow-soft-md">
-       {/* Scroll Buttons */}
-       <button onClick={() => scroll('left')} className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-xl bg-white/80 p-2 shadow-soft-sm hover:bg-gray-50"><ChevronLeft size={20}/></button>
-       <button onClick={() => scroll('right')} className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-l-xl bg-white/80 p-2 shadow-soft-sm hover:bg-gray-50"><ChevronRight size={20}/></button>
+    <div className="relative h-full w-full rounded-xl bg-ink p-6 shadow-soft border border-ink">
+       <div className="flex items-center justify-between mb-6">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Historical Tape</h3>
+          <div className="flex gap-2">
+             <button onClick={() => scroll('left')} className="p-2 rounded-md bg-white/5 text-white hover:bg-white/10 transition-colors"><ChevronLeft size={16}/></button>
+             <button onClick={() => scroll('right')} className="p-2 rounded-md bg-white/5 text-white hover:bg-white/10 transition-colors"><ChevronRight size={16}/></button>
+          </div>
+       </div>
 
-       {/* Container */}
-       <div ref={scrollRef} className="flex h-full items-center gap-4 overflow-x-auto px-4 no-scrollbar snap-x">
+       <div ref={scrollRef} className="flex h-40 items-center gap-4 overflow-x-auto no-scrollbar snap-x">
           {MONTHS.map((m, i) => {
              const isCurrent = i === currentMonthIndex;
              const isPast = i < currentMonthIndex;
-             
+
              return (
-                <div key={m} className="flex h-full min-w-[300px] flex-shrink-0 snap-center flex-col justify-between rounded-2xl border border-gray-100 bg-eggshell p-6 transition-all hover:border-gray-200">
-                   {/* Line 1: Month */}
-                   <div className="text-2xl font-black text-gray-300">{m}</div>
-                   
-                   {isPast ? (
-                      /* PAST CARD */
-                      <div className="flex h-full flex-col justify-between pt-4">
-                        <div>
-                            <div className="text-xs font-bold uppercase text-gray-400">ISB Stock Mock</div>
-                            <div className="mt-1 font-mono text-lg text-gray-300">Data Archived</div> 
-                        </div>
-                        
-                        <div className="rounded-xl bg-gray-50 p-3">
-                             <div className="mb-1 text-xs text-gray-400">Winner</div>
-                             <div className="text-sm font-bold text-gray-400">--</div>
-                        </div>
+                <div key={m} className={cn(
+                  "flex h-full min-w-[280px] flex-shrink-0 snap-center flex-col justify-between rounded-lg border p-5 transition-all",
+                  isCurrent ? "border-discord bg-discord/5" : "border-white/5 bg-white/[0.02]"
+                )}>
+                   <div className="flex justify-between items-start">
+                      <span className={cn("text-2xl font-black", isCurrent ? "text-white" : "text-white/20")}>{m}</span>
+                      {isCurrent ? <Activity size={16} className="text-discord animate-pulse" /> : <Archive size={16} className="text-white/10" />}
+                   </div>
+
+                   <div>
+                      <div className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Status</div>
+                      <div className="font-mono text-xs text-white/40">
+                         {isCurrent ? "Active Session" : isPast ? "Data Locked" : "Pending Close"}
                       </div>
-                   ) : isCurrent ? (
-                       /* CURRENT CARD */
-                       <div className="flex h-full flex-col justify-between pt-4">
-                        <div>
-                            <div className="text-xs font-bold uppercase text-discord">ISB Stock Mock</div>
-                            <div className="animate-pulse font-mono text-xl text-ink">LIVE</div>
-                        </div>
-                        
-                        <div className="rounded-xl bg-discord/5 p-3">
-                            <div className="mb-1 text-xs text-discord">Current Leader</div>
-                            <div className="text-sm font-bold text-ink">@{currentLeader?.username || "TBD"}</div>
-                        </div>
-                       </div>
-                   ) : (
-                       /* FUTURE CARD */
-                       <div className="flex h-full items-center justify-center">
-                          <p className="text-center text-xs italic text-gray-400">"Price is what you pay. Value is what you get."</p>
-                       </div>
-                   )}
+                   </div>
                 </div>
              )
           })}
