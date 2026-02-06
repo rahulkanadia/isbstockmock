@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,79 +11,49 @@ datasource db {
 }
 
 model User {
-  id        String   @id            // Discord ID
-  username  String
-  avatarUrl String?
-  createdAt DateTime @default(now())
-  
-  // New Field
-  isBanned  Boolean  @default(false)
-
-  picks          Pick[]
-  monthlyChanges MonthlyChange[]
-}
-
-model Symbol {
-  id         String   @id @default(cuid())
-  baseSymbol String
-  exchange   String   // NSE | BSE | NSE_SME | BSE_SME
-  name       String
-  active     Boolean  @default(true)
-
-  @@unique([baseSymbol, exchange])
+  id         String   @id
+  username   String
+  avatarUrl  String?
+  isExcluded Boolean  @default(false)
+  pick       Pick?
 }
 
 model Pick {
-  id         String   @id @default(cuid())
-  userId     String
-
-  baseSymbol String
-  exchange   String
-
-  entryDate  DateTime
-  entryPrice Float
-
-  exitDate   DateTime?
-  exitPrice  Float?
-  pnlPercent Float?
-
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([baseSymbol, exchange])
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol             String
+  entryPrice         Float
+  entryDate          DateTime
+  
+  // NEW: For Monthly Calculations
+  previousMonthClose Float?   // The closing price of the previous month-end
 }
 
-model MonthlyChange {
-  id        String   @id @default(cuid())
-  userId    String
-  yearMonth String   // YYYY-MM
-  changedAt DateTime @default(now())
-
-  // FIXED: Added relation back to User
-  user User @relation(fields: [userId], references: [id])
-
-  @@unique([userId, yearMonth])
+model Benchmark {
+  id               String @id @default(cuid())
+  ticker           String @unique
+  name             String
+  openingPriceJan1 Float
 }
 
-model DailyPrice {
-  id         String   @id @default(cuid())
-  baseSymbol String
-  exchange   String
-  date       DateTime
-  open       Float
-  close      Float
-
-  @@unique([baseSymbol, exchange, date])
+model LatestPrice {
+  id          String   @id @default(cuid())
+  symbol      String   @unique
+  price       Float
+  lastUpdated DateTime @updatedAt
+  
+  // NEW: For Candle Graph Wicks
+  seasonHigh  Float?
+  seasonLow   Float?
 }
 
-model AuditLog {
-  id        String   @id @default(cuid())
-  adminId   String?
-  action    String
-  message   String
-  meta      Json?
-  success   Boolean
-  createdAt DateTime @default(now())
+// Keeping history for the Season Table
+model PriceHistory {
+  id     String   @id @default(cuid())
+  symbol String
+  date   DateTime
+  price  Float
+
+  @@unique([symbol, date])
 }

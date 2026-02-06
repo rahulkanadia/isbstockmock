@@ -1,10 +1,21 @@
-import "./globals.css";
 import type { Metadata } from "next";
-import { Providers } from "./providers"; // <--- Import the file you just created
+import { Inter, JetBrains_Mono } from "next/font/google";
+import "./globals.css";
+import Providers from "@/components/Providers";
+
+const inter = Inter({ 
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains",
+});
 
 export const metadata: Metadata = {
   title: "ISB Stock Mock 2026",
-  description: "Monthly stock trading competition",
+  description: "Stock Picking Competition",
 };
 
 export default function RootLayout({
@@ -14,11 +25,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      {/* Note: We removed the Geist font reference as requested earlier */}
-      <body className="font-sans antialiased bg-[#FAF9F6] text-zinc-900">
-        <Providers>
-          {children}
-        </Providers>
+      <body className={`${inter.variable} ${jetbrains.variable} bg-eggshell text-ink font-sans antialiased`}>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

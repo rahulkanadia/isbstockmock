@@ -1,113 +1,121 @@
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions, Session, DefaultSession } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
-import prisma from "@/app/lib/prisma";
+import { PrismaClient } from "@prisma/client";
 
-// 1. Prepare Admin IDs for fast lookup
-const envAdmins = (process.env.ADMIN_IDS || "").split(",");
-const ADMIN_DISCORD_IDS = new Set<string>(envAdmins.map((id) => id.trim()));
+// Extend Session type to include custom fields
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      isAdmin: boolean;
+      username: string;
+    } & DefaultSession["user"];
+  }
+}
 
-export const authOptions = {
+const prisma = new PrismaClient();
+
+export const authOptions: NextAuthOptions = {
   providers: [
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID!,
       clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-      authorization: { params: { scope: 'identify' } },
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }: any) {
-      if (account?.provider !== "discord") return true;
+    async signIn({ user, profile }) {
+      if (!user.id || !profile) return false;
 
-      const realId = account.providerAccountId;
-      const discordUsername = profile.username || user.name;
+      // @ts-ignore - Discord profile has username
+      const discordUsername = (profile.username as string).toLowerCase();
+      const discordId = user.id;
+      const avatarUrl = user.image;
 
-      // 1. Check if Real User exists
-      const existingRealUser = await prisma.user.findUnique({
-        where: { id: realId },
-        include: { picks: true }
+      // 1. Check if this User ID already exists in our DB
+      const existingUser = await prisma.user.findUnique({
+        where: { id: discordId },
+        include: { pick: true },
       });
 
-      // TRIGGER CONDITION: User is new OR User exists but has NO picks (empty account)
-      if (!existingRealUser || existingRealUser.picks.length === 0) {
-        
-        // 2. Search for Legacy User (Case-Insensitive)
-        const legacyUser = await prisma.user.findFirst({
-          where: {
-            username: { equals: discordUsername, mode: "insensitive" },
-            id: { startsWith: "legacy_" }
-          },
-        });
-
-        if (legacyUser) {
-           console.log(`🔗 Linking Legacy ${legacyUser.id} -> Real ${realId}`);
-           
-           await prisma.$transaction(async (tx) => {
-              // A. If Real User doesn't exist yet, Create them
-              if (!existingRealUser) {
-                  await tx.user.create({
-                      data: {
-                          id: realId,
-                          username: discordUsername,
-                          avatarUrl: user.image ?? null,
-                      }
-                  });
-              }
-
-              // B. Move Picks to Real ID
-              await tx.pick.updateMany({
-                  where: { userId: legacyUser.id },
-                  data: { userId: realId }
-              });
-
-              // C. Move Monthly Changes
-              await tx.monthlyChange.updateMany({
-                where: { userId: legacyUser.id },
-                data: { userId: realId }
-              });
-
-              // D. Delete Legacy User
-              await tx.user.delete({
-                  where: { id: legacyUser.id }
-              });
-           });
-           
-           return true;
-        }
+      // 2. If User exists and has a pick, we are good.
+      if (existingUser && existingUser.pick) {
+        return true;
       }
 
-      // 3. Standard Login (Upsert)
-      await prisma.user.upsert({
-        where: { id: realId },
-        update: {
-          username: discordUsername,
-          avatarUrl: user.image ?? null,
-        },
-        create: {
-          id: realId,
-          username: discordUsername,
-          avatarUrl: user.image ?? null,
-        },
+      // 3. THE MERGE LOGIC
+      // If user doesn't exist OR exists but has no pick...
+      // Search for a 'legacy' user matching the username
+      const legacyId = `legacy_${discordUsername}`;
+      
+      const legacyUser = await prisma.user.findUnique({
+        where: { id: legacyId },
+        include: { pick: true },
       });
+
+      if (legacyUser && legacyUser.pick) {
+        console.log(`Found Legacy User: ${legacyId}. Merging to ${discordId}...`);
+        
+        // Transaction to move data safely
+        await prisma.$transaction(async (tx) => {
+          // A. Delete the legacy pick (so we can recreate it attached to new ID)
+          // We can't just 'update' the userId because it's a relation key, 
+          // usually easier to create new and delete old to avoid constraints.
+          
+          // Actually, update is cleaner if foreign keys allow. 
+          // Let's try updating the Pick to point to the new User ID.
+          // First, ensure the new User record exists.
+          
+          if (!existingUser) {
+             await tx.user.create({
+                data: {
+                  id: discordId,
+                  username: profile.name || discordUsername,
+                  avatarUrl: avatarUrl,
+                }
+             });
+          }
+
+          // Move the pick
+          await tx.pick.update({
+            where: { userId: legacyId },
+            data: { userId: discordId }
+          });
+
+          // Delete the old legacy user placeholder
+          await tx.user.delete({
+            where: { id: legacyId }
+          });
+        });
+        
+        return true;
+      }
+
+      // 4. If no legacy user found, create a new basic user (viewer only)
+      if (!existingUser) {
+        await prisma.user.create({
+          data: {
+            id: discordId,
+            username: profile.name || discordUsername,
+            avatarUrl: avatarUrl,
+          },
+        });
+      }
 
       return true;
     },
-
-    async session({ session, token }: any) {
-      if (token.sub && session.user) {
-        (session.user as any).id = token.sub;
-        // INJECT ADMIN STATUS HERE
-        (session.user as any).isAdmin = ADMIN_DISCORD_IDS.has(token.sub);
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
+        session.user.username = session.user.name || "";
+        
+        // Admin Check
+        const adminIds = (process.env.ADMIN_IDS || "").split(",");
+        session.user.isAdmin = adminIds.includes(token.sub);
       }
       return session;
     },
-
-    async jwt({ token, account, user }: any) {
-      if (account?.providerAccountId) {
-        token.sub = account.providerAccountId;
-      }
-      return token;
-    },
   },
+  secret: process.env.NEXTAUTH_SECRET,
 };
 
 const handler = NextAuth(authOptions);
