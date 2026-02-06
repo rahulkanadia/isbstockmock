@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id            // Discord ID
+  username  String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  
+  // New Field
+  isBanned  Boolean  @default(false)
+
+  picks          Pick[]
+  monthlyChanges MonthlyChange[]
+}
+
+model Symbol {
+  id         String   @id @default(cuid())
+  baseSymbol String
+  exchange   String   // NSE | BSE | NSE_SME | BSE_SME
+  name       String
+  active     Boolean  @default(true)
+
+  @@unique([baseSymbol, exchange])
+}
+
+model Pick {
+  id         String   @id @default(cuid())
+  userId     String
+
+  baseSymbol String
+  exchange   String
+
+  entryDate  DateTime
+  entryPrice Float
+
+  exitDate   DateTime?
+  exitPrice  Float?
+  pnlPercent Float?
+
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([baseSymbol, exchange])
+}
+
+model MonthlyChange {
+  id        String   @id @default(cuid())
+  userId    String
+  yearMonth String   // YYYY-MM
+  changedAt DateTime @default(now())
+
+  // FIXED: Added relation back to User
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, yearMonth])
+}
+
+model DailyPrice {
+  id         String   @id @default(cuid())
+  baseSymbol String
+  exchange   String
+  date       DateTime
+  open       Float
+  close      Float
+
+  @@unique([baseSymbol, exchange, date])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String?
+  action    String
+  message   String
+  meta      Json?
+  success   Boolean
+  createdAt DateTime @default(now())
+}
