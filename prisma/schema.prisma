@@ -23,6 +23,8 @@ model Pick {
   userId             String   @unique
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   symbol             String
+  baseSymbol         String?  // <--- ADD THIS (Optional)
+  exchange           String?  // <--- ADD THIS (Optional)
   entryPrice         Float
   entryDate          DateTime
   previousMonthClose Float?
