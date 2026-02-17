@@ -1,11 +1,4 @@
-// lib/marketData.ts
-import YahooFinance from 'yahoo-finance2';
-
-// v3 Requirement: Instantiate the class
-const yahooFinance = new YahooFinance();
-
-const BATCH_SIZE = 5;
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+import yahooFinance from 'yahoo-finance2';
 
 export interface StockData {
   symbol: string;
@@ -14,36 +7,47 @@ export interface StockData {
   dayLow: number;
 }
 
+/**
+ * Optimized for Vercel Serverless (60s limit)
+ * Fetches 100+ symbols in bulk chunks to avoid rate limiting
+ */
 export async function fetchMarketData(symbols: string[]): Promise<StockData[]> {
   const results: StockData[] = [];
   
+  // Yahoo allows bulk quotes. We'll chunk in 20s for maximum reliability.
+  const BATCH_SIZE = 20;
+
   for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-    const batch = symbols.slice(i, i + BATCH_SIZE);
+    const chunk = symbols.slice(i, i + BATCH_SIZE);
     
-    const batchPromises = batch.map(async (symbol) => {
-      try {
-        const quote = await yahooFinance.quote(symbol);
-        
-        if (!quote) return null;
+    try {
+      // Bulk fetch the chunk
+      const quotes = await yahooFinance.quote(chunk);
+      
+      // Yahoo returns a single object if chunk size is 1, or an array if > 1
+      const dataArray = Array.isArray(quotes) ? quotes : [quotes];
 
-        return {
-          symbol,
-          price: quote.regularMarketPrice || 0,
-          // Use today's high/low if available, else fallback to current
-          dayHigh: quote.regularMarketDayHigh || quote.regularMarketPrice || 0,
-          dayLow: quote.regularMarketDayLow || quote.regularMarketPrice || 0,
-        };
+      dataArray.forEach((quote) => {
+        if (!quote) return;
 
-      } catch (error) {
-        console.error(`Failed to fetch ${symbol}:`, error);
-        return null;
-      }
-    });
+        results.push({
+          symbol: quote.symbol,
+          // Fallback chain for price
+          price: quote.regularMarketPrice ?? quote.preMarketPrice ?? quote.postMarketPrice ?? 0,
+          // Ensure High/Low are never 0 if a price exists
+          dayHigh: quote.regularMarketDayHigh ?? quote.regularMarketPrice ?? 0,
+          dayLow: quote.regularMarketDayLow ?? quote.regularMarketPrice ?? 0,
+        });
+      });
 
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...(batchResults.filter(r => r !== null) as StockData[]));
-    
-    if (i + BATCH_SIZE < symbols.length) await delay(500);
+    } catch (error) {
+      console.error(`Bulk fetch failed for chunk starting at ${i}:`, error);
+    }
+
+    // Small breather between chunks to stay under the radar
+    if (i + BATCH_SIZE < symbols.length) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
   }
 
   return results;
