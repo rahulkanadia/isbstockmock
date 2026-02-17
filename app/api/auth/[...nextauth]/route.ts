@@ -1,113 +1,97 @@
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
-import prisma from "@/app/lib/prisma";
+import { prisma } from "@/lib/db";
 
-// 1. Prepare Admin IDs for fast lookup
-const envAdmins = (process.env.ADMIN_IDS || "").split(",");
-const ADMIN_DISCORD_IDS = new Set<string>(envAdmins.map((id) => id.trim()));
+const IS_LOCAL = process.env.TESTONLIVE !== "1";
+// Grabs the first ID in your ADMIN_IDS list
+const PRIMARY_ADMIN_ID = (process.env.ADMIN_IDS || "").split(",")[0];
+// Grabs the username from .env (defaults to 'Admin' if missing)
+const DEV_NAME = process.env.DEV_USERNAME || "Admin";
 
-export const authOptions = {
-  providers: [
+export const authOptions: NextAuthOptions = {
+  // Only enable Discord in Live mode
+  providers: IS_LOCAL ? [] : [
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID!,
       clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-      authorization: { params: { scope: 'identify' } },
     }),
   ],
+  session: { strategy: "jwt" },
   callbacks: {
-    async signIn({ user, account, profile }: any) {
-      if (account?.provider !== "discord") return true;
+    async session({ session, token }) {
+      const adminIds = (process.env.ADMIN_IDS || "").split(",");
 
-      const realId = account.providerAccountId;
-      const discordUsername = profile.username || user.name;
-
-      // 1. Check if Real User exists
-      const existingRealUser = await prisma.user.findUnique({
-        where: { id: realId },
-        include: { picks: true }
-      });
-
-      // TRIGGER CONDITION: User is new OR User exists but has NO picks (empty account)
-      if (!existingRealUser || existingRealUser.picks.length === 0) {
-        
-        // 2. Search for Legacy User (Case-Insensitive)
-        const legacyUser = await prisma.user.findFirst({
-          where: {
-            username: { equals: discordUsername, mode: "insensitive" },
-            id: { startsWith: "legacy_" }
-          },
-        });
-
-        if (legacyUser) {
-           console.log(`🔗 Linking Legacy ${legacyUser.id} -> Real ${realId}`);
-           
-           await prisma.$transaction(async (tx) => {
-              // A. If Real User doesn't exist yet, Create them
-              if (!existingRealUser) {
-                  await tx.user.create({
-                      data: {
-                          id: realId,
-                          username: discordUsername,
-                          avatarUrl: user.image ?? null,
-                      }
-                  });
-              }
-
-              // B. Move Picks to Real ID
-              await tx.pick.updateMany({
-                  where: { userId: legacyUser.id },
-                  data: { userId: realId }
-              });
-
-              // C. Move Monthly Changes
-              await tx.monthlyChange.updateMany({
-                where: { userId: legacyUser.id },
-                data: { userId: realId }
-              });
-
-              // D. Delete Legacy User
-              await tx.user.delete({
-                  where: { id: legacyUser.id }
-              });
-           });
-           
-           return true;
-        }
+      if (IS_LOCAL) {
+        // PURE LOCAL BYPASS: Uses .env values exclusively
+        session.user = {
+          ...session.user,
+          id: PRIMARY_ADMIN_ID, 
+          username: DEV_NAME,
+          isAdmin: true,
+        } as any;
+        return session;
       }
 
-      // 3. Standard Login (Upsert)
-      await prisma.user.upsert({
-        where: { id: realId },
-        update: {
-          username: discordUsername,
-          avatarUrl: user.image ?? null,
-        },
-        create: {
-          id: realId,
-          username: discordUsername,
-          avatarUrl: user.image ?? null,
-        },
-      });
-
-      return true;
-    },
-
-    async session({ session, token }: any) {
-      if (token.sub && session.user) {
-        (session.user as any).id = token.sub;
-        // INJECT ADMIN STATUS HERE
-        (session.user as any).isAdmin = ADMIN_DISCORD_IDS.has(token.sub);
+      if (session.user && token.uid) {
+        session.user.id = token.uid as string;
+        session.user.isAdmin = adminIds.includes(token.uid as string);
       }
       return session;
     },
-
-    async jwt({ token, account, user }: any) {
-      if (account?.providerAccountId) {
-        token.sub = account.providerAccountId;
-      }
+    async jwt({ token, user }) {
+      if (user?.id) token.uid = user.id;
       return token;
     },
-  },
+    async signIn({ user, profile }) {
+      // Local mode auto-approves
+      if (IS_LOCAL) return true;
+      if (!user.id || !profile) return false;
+      
+      const discordId = user.id;
+      const username = ((profile as any).username || "").toLowerCase();
+
+      const existingUser = await prisma.user.findUnique({ where: { id: discordId } });
+      if (existingUser) return true;
+
+      // Check for legacy data to migrate
+      const legacyId = `legacy_${username}`;
+      const legacyUser = await prisma.user.findFirst({ where: { id: legacyId } });
+
+      if (legacyUser) {
+        await prisma.$transaction([
+          prisma.user.create({ 
+            data: { 
+              id: discordId, 
+              username: legacyUser.username, 
+              avatarUrl: user.image 
+            } 
+          }),
+          prisma.pick.update({ 
+            where: { userId: legacyId }, 
+            data: { userId: discordId } 
+          }),
+          prisma.user.delete({ where: { id: legacyId } })
+        ]);
+      } else {
+        // Standard New User Setup
+        await prisma.user.create({
+          data: {
+            id: discordId,
+            username: (profile as any).username || "New User",
+            avatarUrl: user.image,
+            pick: { 
+              create: { 
+                symbol: "PENDING", 
+                entryPrice: 0, 
+                entryDate: new Date("2026-01-16T16:00:00+05:30") 
+              } 
+            }
+          }
+        });
+      }
+      return true;
+    }
+  }
 };
 
 const handler = NextAuth(authOptions);

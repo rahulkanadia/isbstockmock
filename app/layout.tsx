@@ -1,24 +1,22 @@
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import type { Metadata } from "next";
-import { Providers } from "./providers"; // <--- Import the file you just created
+import Providers from "@/components/Providers";
 
-export const metadata: Metadata = {
-  title: "ISB Stock Mock 2026",
-  description: "Monthly stock trading competition",
-};
+const inter = Inter({ 
+  subsets: ["latin"],
+  variable: "--font-inter", // Matches the variable used in @theme
+});
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains", // Matches the variable used in @theme
+});
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      {/* Note: We removed the Geist font reference as requested earlier */}
-      <body className="font-sans antialiased bg-[#FAF9F6] text-zinc-900">
-        <Providers>
-          {children}
-        </Providers>
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
+      <body className="antialiased">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

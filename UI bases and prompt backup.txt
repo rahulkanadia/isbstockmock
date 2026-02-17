@@ -1,0 +1,2091 @@
+Here is one version of the codebase:
+
+isbstockmock_redesign/app/globals.css:
+@import "tailwindcss";
+
+@theme {
+--color-eggshell: #FDFDF8;
+--color-ink: #1A1A1B;
+--color-discord: #5865F2;
+--color-success: #22C55E;
+--color-danger: #EF4444;
+
+--font-sans: var(--font-inter), system-ui;
+--font-mono: var(--font-jetbrains), monospace;
+
+--shadow-float: 0 20px 40px -10px rgba(88, 101, 242, 0.22);
+--shadow-card: 0 10px 30px -5px rgba(26, 26, 27, 0.08);
+}
+
+:root {
+--background: var(--color-eggshell);
+--foreground: var(--color-ink);
+}
+
+body {
+background-color: var(--color-eggshell);
+color: var(--color-ink);
+font-family: var(--font-sans);
+overflow-x: hidden;
+}
+
+/* UNIVERSAL SAFETY */
+.arena-card {
+@apply bg-white p-6 shadow-card transition-all duration-500 ease-in-out;
+border-radius: 1rem;
+display: flex;
+flex-direction: column;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+isbstockmock_redesign/app/DashboardClient.tsx:
+"use client";
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { useLayoutMode } from "@/lib/useLayoutMode";
+import TheHeader from "@/components/TheHeader";
+import BenchmarkBox from "@/components/BenchmarkBox";
+import UserPickBox from "@/components/UserPickBox";
+import RankingGridBox from "@/components/RankingGridBox";
+import SeasonTable from "@/components/SeasonTable";
+import TickerBox from "@/components/TickerBox";
+
+export default function DashboardClient({ seasonStandings, monthlyStandings, benchmarks, session }: any) {
+const mode = useLayoutMode(); // Runtime detection (Compact, Medium, Expanded)
+const [showMyPick, setShowMyPick] = useState(true);
+const [isMockUser, setIsMockUser] = useState(false);
+const [nemesis, setNemesis] = useState<any>(null);
+
+// LOGGED IN LOGIC (Bypass for Localhost)
+const activeUser = session?.user || (isMockUser ? seasonStandings[0] : null);
+const isSplitMode = showMyPick && activeUser;
+
+// RIVALRY CALC
+const myData = activeUser ? seasonStandings.find((u: any) => u.username === (activeUser.name || activeUser.username) || u.id === activeUser.id) : null;
+const competitionIndex = benchmarks.find((b:any) => b.name === 'ISB Index');
+const competitionReturn = competitionIndex ? ((competitionIndex.current - competitionIndex.entry) / competitionIndex.entry) * 100 : 0;
+const rivalData = nemesis ? { username: nemesis.username, return: nemesis.seasonReturn } : { username: "ISB", return: competitionReturn };
+
+return (
+<div className="mx-auto min-h-screen max-w-[1600px] px-6 pb-20 pt-28">
+<TheHeader
+showMyPick={showMyPick}
+setShowMyPick={setShowMyPick}
+myStats={myData ? { return: myData.seasonReturn } : null}
+rivalStats={rivalData}
+isMock={isMockUser}
+onMockLogin={() => setIsMockUser(true)}
+/>
+
+<div className="space-y-8">  
+    {/* TOP ROW: Market (Benchmark) | Me (UserPick) | Group (Rankings) */}  
+    <div className={cn(  
+      "grid gap-8",  
+      mode === "expanded" ? (isSplitMode ? "grid-cols-3 h-[600px]" : "grid-cols-2 h-[600px]") :   
+      mode === "medium" ? "grid-cols-2" : "grid-cols-1"  
+    )}>  
+
+      {/* Market: Benchmark */}  
+      <motion.div layout className="h-full">  
+        <BenchmarkBox benchmarks={benchmarks} />  
+      </motion.div>  
+
+      {/* Me: UserPick (Feature Mode) */}  
+      <AnimatePresence mode="popLayout">  
+        {isSplitMode && (  
+          <motion.div   
+            layout  
+            initial={{ opacity: 0, scale: 0.9, x: 20 }} animate={{ opacity: 1, scale: 1, x: 0 }} exit={{ opacity: 0, scale: 0.9 }}  
+            className="h-full"  
+          >  
+            <UserPickBox user={myData} rank={seasonStandings.findIndex((u:any) => u.username === myData.username) + 1} />  
+          </motion.div>  
+        )}  
+      </AnimatePresence>  
+
+      {/* Group: Leaderboards */}  
+      <motion.div layout className={cn("flex flex-col gap-8 h-full", mode === "medium" && isSplitMode ? "col-span-2" : "")}>  
+        <RankingGridBox title="Season Rankings" users={seasonStandings} type="season" />  
+        <RankingGridBox title="Monthly Performance" users={monthlyStandings} type="monthly" />  
+      </motion.div>  
+    </div>  
+
+    {/* BOTTOM ROW: Season Table & Ticker */}  
+    <div className={cn(  
+      "grid gap-8 items-stretch",  
+      mode === "expanded" ? "grid-cols-[1fr_350px] h-[350px]" : "grid-cols-1"  
+    )}>  
+      <SeasonTable currentMonthIndex={new Date().getMonth()} />  
+      <TickerBox users={seasonStandings} showSearch={isSplitMode} onSelectNemesis={setNemesis} />  
+    </div>  
+  </div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/app/layout.tsx:
+import { Inter, JetBrains_Mono } from "next/font/google";
+import "./globals.css";
+import Providers from "@/components/Providers";
+
+const inter = Inter({
+subsets: ["latin"],
+variable: "--font-inter", // Matches the variable used in @theme
+});
+
+const jetbrains = JetBrains_Mono({
+subsets: ["latin"],
+variable: "--font-jetbrains", // Matches the variable used in @theme
+});
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+return (
+<html lang="en" className={${inter.variable} ${jetbrains.variable}}>
+<body className="antialiased">
+<Providers>{children}</Providers>
+</body>
+</html>
+);
+}
+
+isbstockmock_redesign/app/page.tsx:
+import { prisma } from "@/lib/db";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import DashboardClient from "./DashboardClient";
+
+// Force dynamic rendering to ensure fresh prices on every page load
+export const dynamic = 'force-dynamic';
+
+export default async function Home() {
+const session = await getServerSession(authOptions);
+
+// 1. Parallel Data Fetching for Speed
+const [users, benchmarks, latestPrices] = await Promise.all([
+prisma.user.findMany({
+where: { isExcluded: false },
+include: { pick: true }
+}),
+prisma.benchmark.findMany(),
+prisma.latestPrice.findMany(),
+]);
+
+// 2. Create O(1) Price Lookup Map
+// Key: Symbol -> Value: { price, high, low }
+const priceMap = new Map(latestPrices.map(p => [
+p.symbol,
+{ price: p.price, high: p.seasonHigh, low: p.seasonLow }
+]));
+
+// 3. Hydrate Users (Calculate P&L)
+const hydratedUsers = users
+.filter(u => u.pick)
+.map(u => {
+const liveData = priceMap.get(u.pick!.symbol);
+
+// Fallback to entry price if no live data found (e.g. before market open or bad ticker)  
+  const currentPrice = liveData?.price || u.pick!.entryPrice;  
+
+  // A. Seasonal Return: (Current - Entry) / Entry  
+  // logic: "current minus entry date"  
+  const seasonReturn = ((currentPrice - u.pick!.entryPrice) / u.pick!.entryPrice) * 100;  
+
+  // B. Monthly Return:  
+  // logic: "last date of month (current) minus first date of month (previousMonthClose)"  
+  // If previousMonthClose is null (Jan), use Entry Price.  
+  const monthlyAnchor = u.pick!.previousMonthClose || u.pick!.entryPrice;  
+  const monthlyReturn = ((currentPrice - monthlyAnchor) / monthlyAnchor) * 100;  
+
+  return {  
+    ...u,  
+    seasonReturn,  
+    monthlyReturn,  
+    latestPrice: currentPrice,  
+    pick: {  
+        ...u.pick,  
+        latestPrice: currentPrice  
+    }  
+  };  
+});
+
+// 4. Calculate "ISB Index" (Competition Average)
+// We use a simple average of all participants' season returns to represent the "Cohort"
+const avgSeasonReturn = hydratedUsers.length > 0
+? hydratedUsers.reduce((sum, u) => sum + u.seasonReturn, 0) / hydratedUsers.length
+: 0;
+
+// 5. Hydrate Benchmarks (Market Indices)
+const arenaBenchmarks = benchmarks.map(b => {
+const live = priceMap.get(b.ticker);
+return {
+name: b.name,
+entry: b.openingPriceJan1,
+// If live data missing, assume flat (current = entry)
+current: live?.price || b.openingPriceJan1,
+// Visual wicks: use real highs or fallback to current
+high: live?.high || Math.max(live?.price || 0, b.openingPriceJan1),
+low: live?.low || Math.min(live?.price || 0, b.openingPriceJan1)
+};
+});
+
+// 6. Construct Final Benchmark List (ISB First)
+// We normalize the ISB Index to a base of 100 for easy graphing
+const isbBenchmark = {
+name: 'ISB Index', // This maps to "ISB" in the UI
+entry: 100,
+current: 100 * (1 + (avgSeasonReturn / 100)),
+// Mocking wicks for the ISB index based on avg volatility
+high: 100 * (1 + ((avgSeasonReturn + 2) / 100)),
+low: 100 * (1 + ((avgSeasonReturn - 2) / 100))
+};
+
+const finalBenchmarks = [isbBenchmark, ...arenaBenchmarks];
+
+// 7. Sort Standings
+// Seasonal: Highest Return first
+const seasonStandings = [...hydratedUsers].sort((a, b) => b.seasonReturn - a.seasonReturn);
+
+// Monthly: Highest Return first
+const monthlyStandings = [...hydratedUsers].sort((a, b) => b.monthlyReturn - a.monthlyReturn);
+
+return (
+<DashboardClient   
+benchmarks={finalBenchmarks}  
+seasonStandings={seasonStandings}  
+monthlyStandings={monthlyStandings}  
+session={session}  
+/>
+);
+}
+
+isbstockmock_redesign/lib/useLayoutMode.ts:
+"use client";
+import { useState, useEffect } from "react";
+
+export type LayoutMode = "compact" | "medium" | "expanded";
+
+export function useLayoutMode() {
+const [mode, setMode] = useState<LayoutMode>("expanded");
+
+useEffect(() => {
+const handleResize = () => {
+const width = window.innerWidth;
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const ua = navigator.userAgent.toLowerCase();
+const isMobileUA = /iphone|ipad|ipod|android|blackberry|mini|windows\sphone/g.test(ua);
+
+if (width < 768 || (isMobileUA && width < 1024)) {  
+    setMode("compact");  
+  } else if (width < 1280) {  
+    setMode("medium");  
+  } else {  
+    setMode("expanded");  
+  }  
+};  
+
+handleResize();  
+window.addEventListener("resize", handleResize);  
+return () => window.removeEventListener("resize", handleResize);
+
+}, []);
+
+return mode;
+}
+
+isbstockmock_redesign/lib/utils.ts:
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+return twMerge(clsx(inputs));
+}
+
+export function calculateReturn(current: number, base: number) {
+if (!base || base === 0) return 0;
+return ((current - base) / base) * 100;
+}
+
+export function formatArenaPrice(value: number) {
+if (value >= 10000000) return ₹${(value / 10000000).toFixed(2)}Cr;
+if (value >= 100000) return ₹${(value / 100000).toFixed(2)}L;
+if (value >= 1000) return ₹${(value / 1000).toFixed(1)}K;
+return ₹${value.toFixed(2)};
+}
+
+export function formatArenaPercent(value: number, isGap = false) {
+return ${value >= 0 ? "+" : ""}${value.toFixed(isGap ? 1 : 2)}%;
+}
+
+isbstockmock_redesign/components/BenchmarkBox.tsx:
+"use client";
+
+import { useRef } from "react";
+import { cn } from "@/lib/utils";
+import ShareMenu from "./ShareMenu";
+
+export default function BenchmarkBox({ benchmarks }: { benchmarks: any[] }) {
+const boxRef = useRef<HTMLDivElement>(null);
+const positiveCount = benchmarks.filter(b => b.current > b.entry).length;
+
+// Title Logic
+let title = "The Markets are Bleeding";
+if (positiveCount > 0) title = And then there were ${positiveCount};
+if (positiveCount === 1) title = "And then there was 1";
+
+// Order Rule
+const order = ['ISB Index', '^NSEI', '^BSESN', '^NSMIDCP', 'NIFTY_MID_SELECT.NS', '^CNXSC', 'BTC-USD'];
+const sorted = [...benchmarks].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+
+return (
+<div ref={boxRef} className="arena-card h-full max-h-[300px] relative flex flex-col justify-between">
+<h2 className="text-lg font-bold uppercase mb-4">{title}</h2>
+
+{/* The Graph Body */}  
+  <div className="relative flex-1 flex items-center justify-between px-2 h-32 mb-8">  
+    <div className="absolute top-1/2 left-0 right-0 h-[1.5px] bg-gray-100" />  
+    {sorted.map((b) => {  
+      const ret = ((b.current - b.entry) / b.entry) * 100;  
+      const isGreen = b.current >= b.entry;  
+      const bodyHeight = Math.min(Math.abs(ret) * 4, 45);   
+
+      return (  
+        <div key={b.name} className="relative flex-1 flex flex-col items-center h-full">  
+          {/* Wick - High/Low simulated logic */}  
+          <div className="absolute top-[10%] bottom-[10%] w-[1.5px] bg-gray-200" />  
+          {/* Body */}  
+          <div   
+            className={cn("absolute w-4 rounded-sm shadow-sm", isGreen ? "bg-success" : "bg-danger")}  
+            style={{   
+              height: `${Math.max(bodyHeight, 4)}%`,   
+              bottom: isGreen ? "50%" : `calc(50% - ${bodyHeight}%)`   
+            }}  
+          />  
+        </div>  
+      );  
+    })}  
+  </div>  
+
+  {/* Layered Axis Labels */}  
+  <div className="space-y-1">  
+    <div className="flex justify-between px-1">  
+      {[sorted[0], sorted[2], sorted[4], sorted[6]].map(b => (  
+         <div key={b.name} className="text-center min-w-[60px]">  
+            <p className="text-[8px] font-black text-gray-400 uppercase">{b.name === 'ISB Index' ? 'ISB' : b.name.replace('^','')}</p>  
+            <p className={cn("text-[9px] font-mono font-bold", b.current >= b.entry ? "text-success" : "text-danger")}>  
+              {((b.current - b.entry)/b.entry*100).toFixed(1)}%  
+            </p>  
+         </div>  
+      ))}  
+    </div>  
+    <div className="flex justify-around px-10">  
+      {[sorted[1], sorted[3], sorted[5]].map(b => (  
+         <div key={b.name} className="text-center min-w-[60px]">  
+            <p className="text-[8px] font-black text-gray-400 uppercase">{b.name.replace('^','')}</p>  
+            <p className={cn("text-[9px] font-mono font-bold", b.current >= b.entry ? "text-success" : "text-danger")}>  
+              {((b.current - b.entry)/b.entry*100).toFixed(1)}%  
+            </p>  
+         </div>  
+      ))}  
+    </div>  
+  </div>  
+
+  <div className="absolute bottom-4 right-4"><ShareMenu targetRef={boxRef} fileName="market.png" /></div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/Providers.tsx:
+// components/Providers.tsx
+"use client";
+
+import { SessionProvider } from "next-auth/react";
+
+export default function Providers({ children }: { children: React.ReactNode }) {
+return <SessionProvider>{children}</SessionProvider>;
+}
+
+isbstockmock_redesign/components/RankingGridBox.tsx:
+"use client";
+import { cn } from "@/lib/utils";
+
+export default function RankingGridBox({ title, users, type }: any) {
+const leader = users[0];
+const laggard = users[users.length - 1];
+const runners = users.slice(1, 3);
+
+return (
+<div className="arena-card flex-1 min-h-[280px]">
+<h3 className="text-[10px] font-black tracking-[0.3em] uppercase text-discord mb-6">{title}</h3>
+
+<div className="flex flex-col gap-4">  
+    {/* LEADER */}  
+    <div className="flex items-center justify-between p-3 bg-success/5 border border-success/10 rounded-lg">  
+      <div className="min-w-0">  
+        <p className="text-[9px] font-black text-success uppercase">Leader</p>  
+        <p className="text-sm font-bold truncate">@{leader?.username}</p>  
+      </div>  
+      <p className="text-lg font-mono font-black text-success">+{leader?.seasonReturn.toFixed(1)}%</p>  
+    </div>  
+
+    {/* RUNNERS */}  
+    <div className="space-y-2">  
+      {runners.map((u: any, i: number) => (  
+        <div key={u.id} className="flex justify-between items-center px-2 py-1">  
+          <span className="text-[11px] font-bold text-gray-500 uppercase">@{u.username}</span>  
+          <span className="text-[11px] font-mono font-bold text-ink">+{u.seasonReturn.toFixed(1)}%</span>  
+        </div>  
+      ))}  
+    </div>  
+
+    {/* LAGGARD */}  
+    <div className="mt-auto flex items-center justify-between p-3 bg-danger/5 border border-danger/10 rounded-lg">  
+      <div className="min-w-0">  
+        <p className="text-[9px] font-black text-danger uppercase">Laggard</p>  
+        <p className="text-sm font-bold truncate">@{laggard?.username}</p>  
+      </div>  
+      <p className="text-lg font-mono font-black text-danger">{laggard?.seasonReturn.toFixed(1)}%</p>  
+    </div>  
+  </div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/SeasonTable.tsx:
+"use client";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+export default function SeasonTable({ currentMonthIndex }: { currentMonthIndex: number }) {
+const [viewIndex, setViewIndex] = useState(currentMonthIndex);
+
+const getStyle = (offset: number) => {
+if (offset === 0) return { scale: 1.4, opacity: 1, x: 0, z: 10 };
+if (Math.abs(offset) === 1) return { scale: 0.8, opacity: 0.3, x: offset * 200, z: 5 };
+return { scale: 0.4, opacity: 0.1, x: offset * 300, z: 0 };
+};
+
+return (
+<div className="arena-card bg-ink text-white relative overflow-hidden flex flex-col justify-between">
+<div className="flex justify-between items-center">
+<span className="text-[10px] font-black tracking-[0.4em] text-gray-500 uppercase">Size Ladder</span>
+<div className="flex gap-2">
+{/* Explicitly typed parameter (p: number) */}
+<button
+onClick={() => setViewIndex((p: number) => Math.max(0, p - 1))}
+className="p-2 hover:bg-white/5 rounded"
+>
+<ChevronLeft size={16}/>
+</button>
+
+<button   
+        onClick={() => setViewIndex((p: number) => Math.min(11, p + 1))}   
+        className="p-2 hover:bg-white/5 rounded"  
+      >  
+        <ChevronRight size={16}/>  
+      </button>  
+    </div>  
+  </div>  
+
+  <div className="relative flex-1 flex items-center justify-center h-48">  
+    <AnimatePresence mode="popLayout">  
+      {[-2, -1, 0, 1, 2].map((offset) => {  
+        const idx = viewIndex + offset;  
+        if (idx < 0 || idx >= 12) return null;  
+        const style = getStyle(offset);  
+
+        return (  
+          <motion.div  
+            key={MONTHS[idx]}  
+            animate={{ scale: style.scale, opacity: style.opacity, x: style.x, zIndex: style.z }}  
+            className="absolute text-center flex flex-col items-center"  
+          >  
+            <div className="text-4xl font-black">{MONTHS[idx]}</div>  
+            {offset === 0 && (  
+               <div className="mt-4 text-[8px] font-black uppercase text-discord tracking-widest">  
+                  {idx === currentMonthIndex ? "LIVE ARENA" : "ARCHIVE"}  
+               </div>  
+            )}  
+          </motion.div>  
+        );  
+      })}  
+    </AnimatePresence>  
+  </div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/ShareMenu.tsx:
+"use client";
+import { useState } from "react";
+import { Share2, Download, X, MessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import html2canvas from "html2canvas";
+
+export default function ShareMenu({ targetRef, fileName, mode }: any) {
+const [isOpen, setIsOpen] = useState(false);
+
+const capture = async () => {
+if (!targetRef.current) return;
+setIsOpen(false);
+const canvas = await html2canvas(targetRef.current, { backgroundColor: "#FDFDF8", scale: 2 });
+const link = document.createElement("a");
+link.href = canvas.toDataURL("image/png");
+link.download = fileName;
+link.click();
+};
+
+return (
+<div className="flex justify-center">
+<button
+onClick={() => setIsOpen(true)}
+className="p-3 bg-white shadow-soft rounded-full text-gray-400 hover:text-discord transition-all"
+>
+<Share2 size={18} />
+</button>
+
+<AnimatePresence>  
+    {isOpen && (  
+      <>  
+        {/* Backdrop */}  
+        <motion.div   
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}  
+          onClick={() => setIsOpen(false)}  
+          className="fixed inset-0 bg-ink/60 z-[200] backdrop-blur-sm"  
+        />  
+
+        {/* Adaptive Menu */}  
+        <motion.div  
+          initial={mode === "compact" ? { y: "100%" } : { opacity: 0, scale: 0.9, y: 10 }}  
+          animate={mode === "compact" ? { y: 0 } : { opacity: 1, scale: 1, y: 0 }}  
+          exit={mode === "compact" ? { y: "100%" } : { opacity: 0, scale: 0.9, y: 10 }}  
+          className={cn(  
+            "fixed z-[201] bg-white shadow-float p-6",  
+            mode === "compact"   
+              ? "bottom-0 left-0 right-0 rounded-t-2xl"   
+              : "bottom-24 w-64 rounded-xl border border-gray-100"  
+          )}  
+        >  
+          <div className="flex justify-between items-center mb-6">  
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Share Arena Stats</span>  
+            <button onClick={() => setIsOpen(false)}><X size={16}/></button>  
+          </div>  
+
+          <div className="space-y-3">  
+            <button onClick={capture} className="w-full flex items-center gap-4 p-4 rounded-lg bg-eggshell text-ink font-black text-xs hover:bg-gray-100 transition-colors">  
+              <Download size={18} className="text-discord" /> SAVE SNAPSHOT  
+            </button>  
+            <button className="w-full flex items-center gap-4 p-4 rounded-lg bg-discord text-white font-black text-xs hover:bg-discord-dark transition-colors">  
+              <MessageSquare size={18} /> POST TO DISCORD  
+            </button>  
+          </div>  
+        </motion.div>  
+      </>  
+    )}  
+  </AnimatePresence>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/TheHeader.tsx:
+"use client";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { cn } from "@/lib/utils";
+import { LogOut, Target } from "lucide-react";
+
+export default function TheHeader({ showMyPick, setShowMyPick, myStats, rivalStats, isMock, onMockLogin }: any) {
+const { data: session } = useSession();
+const activeSession = session || (isMock ? { user: { name: "Local Dev" } } : null);
+
+const hasRivalry = myStats && rivalStats;
+const gap = hasRivalry ? myStats.return - rivalStats.return : 0;
+
+return (
+<header className="fixed top-0 left-0 right-0 z-[100] w-full h-20 bg-white border-b border-gray-100">
+<div className="mx-auto flex h-full max-w-[1600px] items-center justify-between px-8">
+
+{/* Branding - Bold, No Italics */}  
+    <div className="text-xl font-bold tracking-tighter text-ink uppercase">  
+      ISB Stock Mock <span className="text-discord">2026</span>  
+    </div>  
+
+    {/* Rivalry Pill - "ISB" Label */}  
+    {hasRivalry && (  
+      <div className="hidden lg:flex items-center gap-4 rounded-lg bg-ink px-5 py-2 border border-ink shadow-float">  
+        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Me vs ISB</span>  
+        <span className={cn("text-base font-mono font-bold", gap >= 0 ? "text-success" : "text-danger")}>  
+          {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%  
+        </span>  
+      </div>  
+    )}  
+
+    <div className="flex items-center gap-6">  
+      {activeSession ? (  
+        <div className="flex items-center gap-5">  
+          <label className="flex cursor-pointer items-center gap-2 text-[10px] font-black uppercase text-gray-500">  
+            <input   
+              type="checkbox"   
+              checked={showMyPick}   
+              onChange={(e) => setShowMyPick(e.target.checked)}   
+              className="accent-discord w-4 h-4 cursor-pointer"   
+            />  
+            Feature My Pick  
+          </label>  
+          <button onClick={() => isMock ? window.location.reload() : signOut()} className="text-gray-400 hover:text-danger">  
+            <LogOut size={16}/>  
+          </button>  
+        </div>  
+      ) : (  
+        <button   
+          onClick={() => window.location.hostname === 'localhost' ? onMockLogin() : signIn("discord")}   
+          className="rounded-lg bg-discord px-5 py-2 text-[11px] font-black text-white shadow-soft uppercase"  
+        >  
+          connect my Discord avatar  
+        </button>  
+      )}  
+    </div>  
+  </div>  
+</header>
+
+);
+}
+
+isbstockmock_redesign/components/TickerBox.tsx:
+"use client";
+import { useState, useEffect } from "react";
+import { Search, X, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+
+export default function TickerBox({ users, onSelectNemesis }: any) {
+const [currentIndex, setCurrentIndex] = useState(0);
+const [isSearchOpen, setIsSearchOpen] = useState(false);
+const [query, setQuery] = useState("");
+
+useEffect(() => {
+if (isSearchOpen) return;
+const interval = setInterval(() => setCurrentIndex(p => (p + 1) % users.length), 4000);
+return () => clearInterval(interval);
+}, [isSearchOpen, users.length]);
+
+const currentUser = users[currentIndex];
+
+return (
+<div className="arena-card h-full bg-white relative overflow-hidden flex flex-col">
+{/* Search Toggle */}
+<button
+onClick={() => setIsSearchOpen(true)}
+className="flex items-center gap-2 mb-6 p-3 bg-eggshell rounded-lg hover:bg-gray-100 transition-colors"
+>
+<Search size={16} className="text-discord" />
+<span className="text-[10px] font-black uppercase tracking-widest text-discord">find your nemesis</span>
+</button>
+
+{/* Arena Roster Button */}  
+  <button className="flex items-center justify-center gap-2 w-full py-3 border border-ink rounded-lg text-ink hover:bg-ink hover:text-white transition-all mb-8">  
+    <Users size={14} />  
+    <span className="text-[10px] font-black uppercase tracking-widest">Arena Roster</span>  
+  </button>  
+
+  <div className="flex-1 flex flex-col items-center justify-center">  
+    <AnimatePresence mode="wait">  
+      <motion.div key={currentUser?.id} initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -10, opacity: 0 }} className="text-center">  
+        <div className="text-xl font-black text-ink mb-4 uppercase">@{currentUser?.username}</div>  
+        <div className="h-4" /> {/* Spacer */}  
+        <div className="text-4xl font-black tracking-tighter text-discord mb-4 italic uppercase">{currentUser?.pick.symbol}</div>  
+        <div className="h-4" /> {/* Spacer */}  
+        <div className={cn("text-2xl font-mono font-bold", currentUser?.seasonReturn >= 0 ? "text-success" : "text-danger")}>  
+          {currentUser?.seasonReturn >= 0 ? "+" : ""}{currentUser?.seasonReturn.toFixed(1)}%  
+        </div>  
+      </motion.div>  
+    </AnimatePresence>  
+  </div>  
+
+  {/* Search Overlay */}  
+  <AnimatePresence>  
+    {isSearchOpen && (  
+      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute inset-0 bg-white z-50 p-6">  
+        <div className="flex items-center justify-between mb-6">  
+          <span className="text-[10px] font-black uppercase text-gray-400">Nemesis Search</span>  
+          <button onClick={() => setIsSearchOpen(false)}><X size={20}/></button>  
+        </div>  
+        <div className="relative">  
+          <input   
+            type="text"   
+            value={query}   
+            onChange={(e) => setQuery(e.target.value)}  
+            placeholder="Search handles..."   
+            className="w-full bg-eggshell rounded-lg px-4 py-4 text-sm font-bold outline-none pr-12"  
+          />  
+          {query && (  
+            <button onClick={() => setQuery("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">  
+              <X size={16} />  
+            </button>  
+          )}  
+        </div>  
+        {/* ... Results mapping same as before ... */}  
+      </motion.div>  
+    )}  
+  </AnimatePresence>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/UserPickBox.tsx:
+"use client";
+import { useRef } from "react";
+import { cn } from "@/lib/utils";
+import ShareMenu from "./ShareMenu";
+
+export default function UserPickBox({ user, rank }: any) {
+const boxRef = useRef<HTMLDivElement>(null);
+const isGreen = user.seasonReturn >= 0;
+
+return (
+<div ref={boxRef} className="arena-card h-full flex flex-col items-center justify-center text-center relative">
+<div className="mb-2 text-sm font-bold text-gray-400 uppercase tracking-widest">@{user.username}</div>
+<div className="text-8xl font-black tracking-tighter text-ink leading-none mb-8 uppercase">
+{user.pick.symbol.split('.')[0]}
+</div>
+
+<div className="space-y-6 w-full">  
+    <div>  
+       <span className="text-[10px] font-black text-gray-300 uppercase block mb-1">Total P&L</span>  
+       <div className={cn("text-5xl font-mono font-bold", isGreen ? "text-success" : "text-danger")}>  
+          {isGreen ? "+" : ""}{user.seasonReturn.toFixed(2)}%  
+       </div>  
+    </div>  
+
+    <div className="flex flex-col items-center">  
+       <span className="text-[10px] font-black text-gray-300 uppercase block mb-2">Arena Standing</span>  
+       <div className="bg-ink text-white px-8 py-3 rounded-lg text-3xl font-black">  
+          #{rank}  
+       </div>  
+    </div>  
+  </div>  
+
+  <div className="absolute bottom-4 right-4">  
+    <ShareMenu targetRef={boxRef} fileName="my-pick.png" />  
+  </div>  
+</div>
+
+);
+}
+
+Here is other version of the codebase:
+
+isbstockmock_redesign/app/globals.css:
+@import "tailwindcss";
+
+@theme {
+--color-eggshell: #FDFDF8;
+--color-ink: #1A1A1B;
+--color-discord: #5865F2;
+--color-success: #22C55E;
+--color-danger: #EF4444;
+
+--font-sans: var(--font-inter), system-ui;
+--font-mono: var(--font-jetbrains), monospace;
+
+--shadow-float: 0 20px 40px -10px rgba(88, 101, 242, 0.22);
+--shadow-card: 0 10px 30px -5px rgba(26, 26, 27, 0.08);
+}
+
+:root {
+--background: var(--color-eggshell);
+--foreground: var(--color-ink);
+}
+
+body {
+background-color: var(--color-eggshell);
+color: var(--color-ink);
+font-family: var(--font-sans);
+overflow-x: hidden;
+}
+
+/* UNIVERSAL SAFETY */
+.arena-card {
+@apply bg-white p-6 shadow-card transition-all duration-500 ease-in-out;
+border-radius: 1rem;
+display: flex;
+flex-direction: column;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+isbstockmock_redesign/app/DashboardClient.tsx:
+"use client";
+import { useState } from "react";
+import { useLayoutMode } from "@/lib/useLayoutMode";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import TheHeader from "@/components/TheHeader";
+import BenchmarkBox from "@/components/BenchmarkBox";
+import UserPickBox from "@/components/UserPickBox";
+import RankingGridBox from "@/components/RankingGridBox";
+import SeasonTable from "@/components/SeasonTable";
+import TickerBox from "@/components/TickerBox";
+
+export default function MainDashboard({ benchmarks, seasonStandings, session }: any) {
+const mode = useLayoutMode();
+const [showMyPick, setShowMyPick] = useState(true);
+const [nemesis, setNemesis] = useState<any>(null);
+
+const isExpanded = mode === "expanded";
+const isMedium = mode === "medium";
+const isCompact = mode === "compact";
+
+// Story Logic
+const myData = seasonStandings[0]; // Placeholder for session user
+const gap = nemesis ? (myData.seasonReturn - nemesis.seasonReturn) : (myData.seasonReturn - 0);
+
+return (
+<div className="min-h-screen bg-eggshell pt-28 pb-12 px-6">
+<TheHeader   
+user={myData}   
+rival={nemesis}   
+gap={gap}   
+showMyPick={showMyPick}   
+setShowMyPick={setShowMyPick}   
+/>
+
+<div className="mx-auto max-w-[1600px] space-y-8">  
+
+    {/* TOP ROW: Market & Group & Me */}  
+    <div className={cn(  
+      "grid gap-8",  
+      isExpanded && showMyPick ? "grid-cols-3 h-[600px]" :   
+      isExpanded ? "grid-cols-2 h-[600px]" :  
+      isMedium ? "grid-cols-2" : "grid-cols-1"  
+    )}>  
+
+      <div className="h-full">  
+        <BenchmarkBox benchmarks={benchmarks} />  
+      </div>  
+
+      <AnimatePresence>  
+        {showMyPick && (  
+          <motion.div   
+            initial={{ opacity: 0, scale: 0.95 }}   
+            animate={{ opacity: 1, scale: 1 }}  
+            exit={{ opacity: 0, scale: 0.95 }}  
+            className="h-full"  
+          >  
+            <UserPickBox user={myData} />  
+          </motion.div>  
+        )}  
+      </AnimatePresence>  
+
+      <div className={cn(  
+        "flex flex-col gap-8 h-full",  
+        isMedium && !showMyPick ? "col-span-1" :   
+        isMedium ? "col-span-2" : ""  
+      )}>  
+        <RankingGridBox title="Arena Leaders" users={seasonStandings.slice(0, 5)} />  
+        <RankingGridBox title="Monthly Heat" users={seasonStandings.slice(-5)} />  
+      </div>  
+    </div>  
+
+    {/* BOTTOM ROW: History & Roster */}  
+    <div className={cn(  
+      "grid gap-8",  
+      isExpanded ? "grid-cols-[1fr_350px] h-[350px]" : "grid-cols-1"  
+    )}>  
+      <SeasonTable currentMonth={2} />  
+      <TickerBox users={seasonStandings} onSelectNemesis={setNemesis} />  
+    </div>  
+  </div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/app/layout.tsx:
+import { Inter, JetBrains_Mono } from "next/font/google";
+import "./globals.css";
+import Providers from "@/components/Providers";
+
+const inter = Inter({
+subsets: ["latin"],
+variable: "--font-inter", // Matches the variable used in @theme
+});
+
+const jetbrains = JetBrains_Mono({
+subsets: ["latin"],
+variable: "--font-jetbrains", // Matches the variable used in @theme
+});
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+return (
+<html lang="en" className={${inter.variable} ${jetbrains.variable}}>
+<body className="antialiased">
+<Providers>{children}</Providers>
+</body>
+</html>
+);
+}
+
+isbstockmock_redesign/app/page.tsx:
+// app/page.tsx
+import { prisma } from "@/lib/db";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import MainDashboard from "./DashboardClient";
+
+export default async function Home() {
+const session = await getServerSession(authOptions);
+
+// Parallel fetch for Arena Speed
+const [users, benchmarks, latestPrices] = await Promise.all([
+prisma.user.findMany({ where: { isExcluded: false }, include: { pick: true } }),
+prisma.benchmark.findMany(),
+prisma.latestPrice.findMany(),
+]);
+
+const priceMap = new Map(latestPrices.map(p => [p.symbol, p]));
+
+// Arena Data Hydration
+const seasonStandings = users
+.filter(u => u.pick)
+.map(u => {
+const live = priceMap.get(u.pick!.symbol);
+const current = live?.price || u.pick!.entryPrice;
+const sReturn = ((current - u.pick!.entryPrice) / u.pick!.entryPrice) * 100;
+
+return {  
+    ...u,  
+    seasonReturn: sReturn,  
+    // Using provided logic for monthly  
+    monthlyReturn: ((current - (u.pick!.previousMonthClose || u.pick!.entryPrice)) / (u.pick!.previousMonthClose || u.pick!.entryPrice)) * 100  
+  };  
+})  
+.sort((a, b) => b.seasonReturn - a.seasonReturn);
+
+const arenaBenchmarks = benchmarks.map(b => {
+const live = priceMap.get(b.ticker);
+return {
+name: b.name,
+entry: b.openingPriceJan1,
+current: live?.price || b.openingPriceJan1,
+high: live?.seasonHigh || b.openingPriceJan1,
+low: live?.seasonLow || b.openingPriceJan1
+};
+});
+
+return (
+<MainDashboard   
+benchmarks={arenaBenchmarks}  
+seasonStandings={seasonStandings}  
+session={session}  
+/>
+);
+}
+
+isbstockmock_redesign/lib/useLayoutMode.ts:
+"use client";
+import { useState, useEffect } from "react";
+
+export type LayoutMode = "compact" | "medium" | "expanded";
+
+export function useLayoutMode() {
+const [mode, setMode] = useState<LayoutMode>("expanded");
+
+useEffect(() => {
+const handleResize = () => {
+const width = window.innerWidth;
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const ua = navigator.userAgent.toLowerCase();
+const isMobileUA = /iphone|ipad|ipod|android|blackberry|mini|windows\sphone/g.test(ua);
+
+if (width < 768 || (isMobileUA && width < 1024)) {  
+    setMode("compact");  
+  } else if (width < 1280) {  
+    setMode("medium");  
+  } else {  
+    setMode("expanded");  
+  }  
+};  
+
+handleResize();  
+window.addEventListener("resize", handleResize);  
+return () => window.removeEventListener("resize", handleResize);
+
+}, []);
+
+return mode;
+}
+
+isbstockmock_redesign/lib/utils.ts:
+"use client";
+import { useState, useEffect } from "react";
+
+export type LayoutMode = "compact" | "medium" | "expanded";
+
+export function useLayoutMode() {
+const [mode, setMode] = useState<LayoutMode>("expanded");
+
+useEffect(() => {
+const handleResize = () => {
+const width = window.innerWidth;
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const ua = navigator.userAgent.toLowerCase();
+const isMobileUA = /iphone|ipad|ipod|android|blackberry|mini|windows\sphone/g.test(ua);
+
+if (width < 768 || (isMobileUA && width < 1024)) {  
+    setMode("compact");  
+  } else if (width < 1280) {  
+    setMode("medium");  
+  } else {  
+    setMode("expanded");  
+  }  
+};  
+
+handleResize();  
+window.addEventListener("resize", handleResize);  
+return () => window.removeEventListener("resize", handleResize);
+
+}, []);
+
+return mode;
+}
+
+isbstockmock_redesign/components/BenchmarkBox.tsx:
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+return twMerge(clsx(inputs));
+}
+
+export function formatArenaPrice(value: number) {
+if (value >= 10000000) return ₹${(value / 10000000).toFixed(2)}Cr;
+if (value >= 100000) return ₹${(value / 100000).toFixed(2)}L;
+if (value >= 1000) return ₹${(value / 1000).toFixed(1)}K;
+return ₹${value.toFixed(2)};
+}
+
+export function formatArenaPercent(value: number, isGap = false) {
+return ${value >= 0 ? "+" : ""}${value.toFixed(isGap ? 1 : 2)}%;
+}
+
+isbstockmock_redesign/components/Providers.tsx:
+// components/Providers.tsx
+"use client";
+
+import { SessionProvider } from "next-auth/react";
+
+export default function Providers({ children }: { children: React.ReactNode }) {
+return <SessionProvider>{children}</SessionProvider>;
+}
+
+isbstockmock_redesign/components/RankingGridBox.tsx:
+"use client";
+import { cn } from "@/lib/utils";
+
+export default function RankingGridBox({ title, users }: any) {
+return (
+<div className="arena-card flex-1">
+<h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-300 mb-6">{title}</h3>
+
+<div className="grid grid-cols-2 gap-4 flex-1">  
+    {users.slice(0, 4).map((u: any, i: number) => {  
+      const isWinner = i === 0;  
+      return (  
+        <div   
+          key={u.id}   
+          className={cn(  
+            "rounded-xl p-4 flex flex-col justify-between transition-all hover:translate-y-[-2px]",  
+            isWinner ? "bg-discord/[0.03] border border-discord/10" : "bg-eggshell border border-transparent"  
+          )}  
+        >  
+          <div className="flex justify-between items-start mb-2">  
+            <span className="text-[10px] font-bold text-ink truncate w-20 uppercase">  
+              @{u.username}  
+            </span>  
+            {isWinner && <div className="w-1.5 h-1.5 rounded-full bg-discord" />}  
+          </div>  
+
+          <div className="mt-auto">  
+            <div className="text-sm font-black tracking-tighter text-ink">  
+              {u.seasonReturn >= 0 ? "+" : ""}{u.seasonReturn.toFixed(1)}%  
+            </div>  
+            {/* Performance Bar */}  
+            <div className="w-full h-1 bg-gray-200 rounded-full mt-2 overflow-hidden">  
+              <div   
+                className={cn("h-full", u.seasonReturn >= 0 ? "bg-success" : "bg-danger")}   
+                style={{ width: `${Math.min(Math.abs(u.seasonReturn) * 3, 100)}%` }}  
+              />  
+            </div>  
+          </div>  
+        </div>  
+      );  
+    })}  
+  </div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/SeasonTable.tsx:
+"use client";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+export default function SeasonTable({ currentMonthIndex }: { currentMonthIndex: number }) {
+const [viewIndex, setViewIndex] = useState(currentMonthIndex);
+
+const step = (dir: number) => {
+const next = viewIndex + dir;
+if (next >= 0 && next < MONTHS.length) setViewIndex(next);
+};
+
+return (
+<div className="arena-card bg-ink text-white min-h-[350px] relative overflow-hidden">
+<div className="flex justify-between items-center mb-12">
+<h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">Season Ladder</h3>
+<div className="flex gap-4">
+<button onClick={() => step(-1)} className="p-2 border border-white/10 rounded hover:bg-white/5 transition-colors"><ChevronLeft size={16}/></button>
+<button onClick={() => step(1)} className="p-2 border border-white/10 rounded hover:bg-white/5 transition-colors"><ChevronRight size={16}/></button>
+</div>
+</div>
+
+<div className="flex items-center justify-center relative h-32">  
+    <AnimatePresence mode="popLayout">  
+      {[-1, 0, 1].map((offset) => {  
+        const idx = viewIndex + offset;  
+        if (idx < 0 || idx >= MONTHS.length) return null;  
+
+        const isCenter = offset === 0;  
+        return (  
+          <motion.div  
+            key={MONTHS[idx]}  
+            initial={{ opacity: 0, scale: 0.5, x: offset * 100 }}  
+            animate={{   
+              opacity: isCenter ? 1 : 0.2,   
+              scale: isCenter ? 1.2 : 0.7,  
+              x: offset * 180,  
+              zIndex: isCenter ? 10 : 0  
+            }}  
+            exit={{ opacity: 0, scale: 0.5 }}  
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}  
+            className="absolute font-black text-4xl italic"  
+          >  
+            {MONTHS[idx]}  
+            {isCenter && (  
+              <motion.div   
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}  
+                className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[8px] font-mono text-discord tracking-widest whitespace-nowrap"  
+              >  
+                {idx === currentMonthIndex ? "LIVE ARENA" : "ARCHIVE"}  
+              </motion.div>  
+            )}  
+          </motion.div>  
+        );  
+      })}  
+    </AnimatePresence>  
+  </div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/ShareMenu.tsx:
+"use client";
+import { useState } from "react";
+import { Share2, Download, X, MessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import html2canvas from "html2canvas";
+
+export default function ShareMenu({ targetRef, fileName, mode }: any) {
+const [isOpen, setIsOpen] = useState(false);
+
+const capture = async () => {
+if (!targetRef.current) return;
+setIsOpen(false);
+const canvas = await html2canvas(targetRef.current, { backgroundColor: "#FDFDF8", scale: 2 });
+const link = document.createElement("a");
+link.href = canvas.toDataURL("image/png");
+link.download = fileName;
+link.click();
+};
+
+return (
+<div className="flex justify-center">
+<button
+onClick={() => setIsOpen(true)}
+className="p-3 bg-white shadow-soft rounded-full text-gray-400 hover:text-discord transition-all"
+>
+<Share2 size={18} />
+</button>
+
+<AnimatePresence>  
+    {isOpen && (  
+      <>  
+        {/* Backdrop */}  
+        <motion.div   
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}  
+          onClick={() => setIsOpen(false)}  
+          className="fixed inset-0 bg-ink/60 z-[200] backdrop-blur-sm"  
+        />  
+
+        {/* Adaptive Menu */}  
+        <motion.div  
+          initial={mode === "compact" ? { y: "100%" } : { opacity: 0, scale: 0.9, y: 10 }}  
+          animate={mode === "compact" ? { y: 0 } : { opacity: 1, scale: 1, y: 0 }}  
+          exit={mode === "compact" ? { y: "100%" } : { opacity: 0, scale: 0.9, y: 10 }}  
+          className={cn(  
+            "fixed z-[201] bg-white shadow-float p-6",  
+            mode === "compact"   
+              ? "bottom-0 left-0 right-0 rounded-t-2xl"   
+              : "bottom-24 w-64 rounded-xl border border-gray-100"  
+          )}  
+        >  
+          <div className="flex justify-between items-center mb-6">  
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Share Arena Stats</span>  
+            <button onClick={() => setIsOpen(false)}><X size={16}/></button>  
+          </div>  
+
+          <div className="space-y-3">  
+            <button onClick={capture} className="w-full flex items-center gap-4 p-4 rounded-lg bg-eggshell text-ink font-black text-xs hover:bg-gray-100 transition-colors">  
+              <Download size={18} className="text-discord" /> SAVE SNAPSHOT  
+            </button>  
+            <button className="w-full flex items-center gap-4 p-4 rounded-lg bg-discord text-white font-black text-xs hover:bg-discord-dark transition-colors">  
+              <MessageSquare size={18} /> POST TO DISCORD  
+            </button>  
+          </div>  
+        </motion.div>  
+      </>  
+    )}  
+  </AnimatePresence>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/TheHeader.tsx:
+"use client";
+import { useState } from "react";
+import { Share2, Download, X, MessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import html2canvas from "html2canvas";
+
+export default function ShareMenu({ targetRef, fileName, mode }: any) {
+const [isOpen, setIsOpen] = useState(false);
+
+const capture = async () => {
+if (!targetRef.current) return;
+setIsOpen(false);
+const canvas = await html2canvas(targetRef.current, { backgroundColor: "#FDFDF8", scale: 2 });
+const link = document.createElement("a");
+link.href = canvas.toDataURL("image/png");
+link.download = fileName;
+link.click();
+};
+
+return (
+<div className="flex justify-center">
+<button
+onClick={() => setIsOpen(true)}
+className="p-3 bg-white shadow-soft rounded-full text-gray-400 hover:text-discord transition-all"
+>
+<Share2 size={18} />
+</button>
+
+<AnimatePresence>  
+    {isOpen && (  
+      <>  
+        {/* Backdrop */}  
+        <motion.div   
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}  
+          onClick={() => setIsOpen(false)}  
+          className="fixed inset-0 bg-ink/60 z-[200] backdrop-blur-sm"  
+        />  
+
+        {/* Adaptive Menu */}  
+        <motion.div  
+          initial={mode === "compact" ? { y: "100%" } : { opacity: 0, scale: 0.9, y: 10 }}  
+          animate={mode === "compact" ? { y: 0 } : { opacity: 1, scale: 1, y: 0 }}  
+          exit={mode === "compact" ? { y: "100%" } : { opacity: 0, scale: 0.9, y: 10 }}  
+          className={cn(  
+            "fixed z-[201] bg-white shadow-float p-6",  
+            mode === "compact"   
+              ? "bottom-0 left-0 right-0 rounded-t-2xl"   
+              : "bottom-24 w-64 rounded-xl border border-gray-100"  
+          )}  
+        >  
+          <div className="flex justify-between items-center mb-6">  
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Share Arena Stats</span>  
+            <button onClick={() => setIsOpen(false)}><X size={16}/></button>  
+          </div>  
+
+          <div className="space-y-3">  
+            <button onClick={capture} className="w-full flex items-center gap-4 p-4 rounded-lg bg-eggshell text-ink font-black text-xs hover:bg-gray-100 transition-colors">  
+              <Download size={18} className="text-discord" /> SAVE SNAPSHOT  
+            </button>  
+            <button className="w-full flex items-center gap-4 p-4 rounded-lg bg-discord text-white font-black text-xs hover:bg-discord-dark transition-colors">  
+              <MessageSquare size={18} /> POST TO DISCORD  
+            </button>  
+          </div>  
+        </motion.div>  
+      </>  
+    )}  
+  </AnimatePresence>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/TickerBox.tsx:
+"use client";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, ChevronUp, Swords } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export default function TickerBox({ users, onSelectNemesis, mode }: any) {
+const [currentIndex, setCurrentIndex] = useState(0);
+const [isSearchOpen, setIsSearchOpen] = useState(false);
+const [query, setQuery] = useState("");
+
+// Auto-scroll roster
+useEffect(() => {
+if (isSearchOpen || users.length === 0) return;
+const interval = setInterval(() => {
+setCurrentIndex((prev) => (prev + 1) % users.length);
+}, 4000);
+return () => clearInterval(interval);
+}, [users.length, isSearchOpen]);
+
+const filtered = users.filter((u: any) =>
+u.username.toLowerCase().includes(query.toLowerCase())
+);
+
+return (
+<div className="arena-card h-full bg-white relative overflow-hidden group">
+{/* Header Zone */}
+<div className="flex items-center justify-between mb-4">
+<span className="text-[10px] font-black tracking-[0.4em] text-gray-300 uppercase">Arena Roster</span>
+<button
+onClick={() => setIsSearchOpen(!isSearchOpen)}
+className="p-2 hover:bg-eggshell rounded-full transition-colors"
+>
+<Search size={14} className="text-gray-400" />
+</button>
+</div>
+
+{/* Content Zone: Auto-Feed */}  
+  <div className="flex-1 flex flex-col justify-center">  
+    <AnimatePresence mode="wait">  
+      <motion.div  
+        key={users[currentIndex]?.id}  
+        initial={{ y: 20, opacity: 0 }}  
+        animate={{ y: 0, opacity: 1 }}  
+        exit={{ y: -20, opacity: 0 }}  
+        className="flex flex-col items-center text-center"  
+      >  
+        <span className="text-[11px] font-bold text-discord mb-1 uppercase tracking-widest">  
+          @{users[currentIndex]?.username}  
+        </span>  
+        <span className="text-3xl font-black tracking-tighter mb-2 italic">  
+          {users[currentIndex]?.pick.symbol}  
+        </span>  
+        <span className={cn(  
+          "text-lg font-mono font-bold",  
+          users[currentIndex]?.seasonReturn >= 0 ? "text-success" : "text-danger"  
+        )}>  
+          {users[currentIndex]?.seasonReturn >= 0 ? "+" : ""}{users[currentIndex]?.seasonReturn.toFixed(1)}%  
+        </span>  
+      </motion.div>  
+    </AnimatePresence>  
+  </div>  
+
+  {/* Nemesis Swipe-Up Overlay */}  
+  <motion.div   
+    animate={{ y: isSearchOpen ? 0 : "90%" }}  
+    transition={{ type: "spring", damping: 25, stiffness: 200 }}  
+    className="absolute inset-0 bg-ink z-20 p-6 flex flex-col"  
+  >  
+    <button   
+      onClick={() => setIsSearchOpen(false)}  
+      className="w-full flex justify-center mb-4 text-gray-500 hover:text-white"  
+    >  
+      <ChevronUp className={cn("transition-transform", isSearchOpen && "rotate-180")} />  
+    </button>  
+
+    <h4 className="text-white text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">  
+      <Swords size={14} className="text-danger" /> Pick a Nemesis  
+    </h4>  
+
+    <input   
+      type="text"  
+      placeholder="Search handles..."  
+      value={query}  
+      onChange={(e) => setQuery(e.target.value)}  
+      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm outline-none focus:border-discord transition-all"  
+    />  
+
+    <div className="mt-4 flex-1 overflow-y-auto no-scrollbar space-y-2">  
+      {filtered.slice(0, 10).map((u: any) => (  
+        <button   
+          key={u.id}  
+          onClick={() => {  
+            onSelectNemesis(u);  
+            setIsSearchOpen(false);  
+          }}  
+          className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-white/5 text-left transition-colors"  
+        >  
+          <span className="text-xs text-gray-300 font-bold uppercase">@{u.username}</span>  
+          <span className="text-xs font-mono text-discord">{u.seasonReturn.toFixed(1)}%</span>  
+        </button>  
+      ))}  
+    </div>  
+  </motion.div>  
+</div>
+
+);
+}
+
+isbstockmock_redesign/components/UserPickBox.tsx:
+"use client";
+import { cn } from "@/lib/utils";
+import { TrendingUp, Award, Share2 } from "lucide-react";
+
+export default function UserPickBox({ user, rank }: any) {
+const isGreen = user.seasonReturn >= 0;
+
+return (
+<div className="arena-card h-full justify-between relative overflow-hidden group">
+{/* Background Accent */}
+<div className="absolute top-[-10%] right-[-10%] w-64 h-64 bg-discord/5 rounded-full blur-3xl -z-10" />
+
+{/* Header: Me */}  
+  <div className="flex items-center justify-between">  
+    <div className="flex items-center gap-2">  
+      <div className="w-2 h-2 rounded-full bg-discord animate-ping" />  
+      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">My Selection</span>  
+    </div>  
+    <button className="text-gray-300 hover:text-discord transition-colors">  
+      <Share2 size={16} />  
+    </button>  
+  </div>  
+
+  {/* Identity */}  
+  <div className="mt-8">  
+    <h3 className="text-sm font-bold text-ink mb-1">@{user.username}</h3>  
+    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dominating the Arena</p>  
+  </div>  
+
+  {/* Massive Ticker Symbol */}  
+  <div className="my-6">  
+    <h1 className="text-8xl font-black tracking-tighter text-ink italic leading-none truncate">  
+      {user.pick.symbol.split('.')[0]}  
+    </h1>  
+  </div>  
+
+  {/* Action Zone: Metrics */}  
+  <div className="grid grid-cols-2 border-t border-gray-50 pt-8 gap-4">  
+    <div>  
+       <span className="text-[9px] font-black text-gray-300 uppercase block mb-1">Total P&L</span>  
+       <div className={cn("text-2xl font-mono font-bold flex items-center gap-1", isGreen ? "text-success" : "text-danger")}>  
+          {isGreen ? "+" : ""}{user.seasonReturn.toFixed(2)}%  
+       </div>  
+    </div>  
+    <div className="flex flex-col items-end">  
+       <span className="text-[9px] font-black text-gray-300 uppercase block mb-1 text-right">Arena Standing</span>  
+       <div className="flex items-center gap-2 bg-ink text-white px-3 py-1 rounded-md">  
+          <Award size={14} className="text-discord" />  
+          <span className="text-sm font-black">#{rank}</span>  
+       </div>  
+    </div>  
+  </div>  
+</div>
+
+);
+}
+
+MASTER UI PROMPT — ISB STOCK MOCK 2026
+
+Universal Adaptive Redesign (Full Version)
+
+This project is undergoing a complete UI reset.
+The current implementation contains too many structural, layout, and overflow issues to enumerate.
+
+Treat this as a ground-up redesign.
+
+Existing components may be discarded.
+
+This is NOT a CRUD dashboard.
+
+It is a story-driven competitive market arena.
+
+Primary experience:
+
+Market → Group → Me → Rival
+
+Emphasize motion, rivalry, and status over tables.
+
+Do not preserve prior UI unless explicitly specified here.
+
+
+---
+
+GLOBAL ADAPTIVE SYSTEM
+
+At runtime, detect:
+
+Viewport size
+
+Pointer type (touch vs mouse)
+
+User agent (mobile / tablet / desktop)
+
+Select one layout mode:
+
+1. Compact Mode (phones / narrow)
+
+
+2. Medium Mode (tablets / small laptops)
+
+
+3. Expanded Mode (desktops / wide)
+
+
+
+Layouts derive from mode, NOT hardcoded pixels.
+
+
+---
+
+VISUAL SYSTEM
+
+Background: Eggshell / soft off-white (or inverse with purple dominant).
+
+Accent: Discord purple.
+
+Floating cards with shadows (no borders).
+
+Subtle gradients allowed.
+
+Glassy transparency allowed.
+
+Maximum 2 fonts.
+
+Numbers/tickers use monospace.
+
+
+---
+
+UNIVERSAL LAYOUT SAFETY (MANDATORY)
+
+These rules exist to prevent clipping and overflow.
+
+Containers
+
+Every card has internal padding.
+
+No content touches edges.
+
+Height Budgeting
+
+Every card must internally allocate:
+
+Header/title zone
+
+Flexible middle zone
+
+Fixed footer/action zone
+
+Graphs fill flexible zone.
+Buttons always have reserved space.
+
+
+---
+
+Text Rules
+
+Usernames: single line + ellipsis
+
+Company names: max 2 lines + ellipsis
+
+Quotes: max 3 lines
+
+Ticker cards: all fields single line
+
+No text may exceed its container height
+
+
+---
+
+Numbers
+
+Percentages: max 2 decimals
+
+Gap %: 1 decimal
+
+Prices abbreviated (K / L / Cr)
+
+Prevent long numeric strings
+
+
+---
+
+Minimum Heights
+
+Primary cards (Benchmark, UserPick, Ranking, Monthly, Ticker) must not shrink below defined minimums.
+
+
+---
+
+Overflow Philosophy
+
+SeasonTable: horizontal only
+
+Ticker: vertical or horizontal based on layout mode
+
+UserPick: no scrolling
+
+Ranking/Monthly: bars scale, text truncates
+
+No nested scrolling inside cards
+
+
+---
+
+Animation Rule
+
+During layout transitions:
+
+Use transform / opacity / scale
+
+Never reflow text
+
+
+---
+
+CORE STRUCTURE
+
+AppShell
+├ Header
+└ MainDashboard
+├ TopRow
+└ BottomRow
+
+Global states:
+
+loggedOut
+
+loggedIn_featureOff
+
+loggedIn_featureOn
+
+Nemesis state:
+
+temporary
+
+session only
+
+
+---
+
+HEADER (ALL MODES)
+
+Sticky.
+
+Starts tall + opaque.
+
+On scroll:
+
+Shrinks
+
+Becomes translucent
+
+Internal elements scale down
+
+
+---
+
+Header Left
+
+Text: ISB STOCK MOCK 2026
+
+Admin only: Becomes “Admin Console”
+
+Interaction: Swipe-down SPA transition to Admin page.
+
+
+---
+
+Header Center — Nemesis Bar
+
+Visible by default.
+
+Default nemesis = total competition P&L.
+
+After explicit nemesis selection:
+
+Displays:
+
+User avatar (left)
+
+Rival avatar (right)
+
+Center text: Gap +X% (green/red)
+
+Bottom:
+
+Rival progress bar (user → rival)
+
+Gap %
+
+
+---
+
+Header Right
+
+Vertical stack:
+
+1. Connect Discord
+
+
+2. Feature My Pick checkbox (default ON, NEVER disabled or greyed)
+
+
+
+Checkbox controls layout mode even when logged out.
+
+
+---
+
+MAIN DASHBOARD
+
+Contains:
+
+TopRow
+BottomRow
+
+
+---
+
+TOP ROW — EXPANDED MODE
+
+Three columns:
+
+Benchmark | UserPick (optional) | Ranking + Monthly
+
+If Feature OFF:
+
+Benchmark | Ranking + Monthly
+
+Height rule:
+
+Benchmark
+= UserPick (if present)
+= Ranking + Monthly
+
+
+---
+
+TOP ROW — MEDIUM MODE
+
+Vertical stacking in pairs:
+
+Benchmark
+UserPick (if enabled)
+Ranking
+Monthly
+
+
+---
+
+TOP ROW — COMPACT MODE
+
+Single column narrative:
+
+Benchmark
+UserPick
+Ranking
+Monthly
+
+Never side-by-side.
+
+
+---
+
+BENCHMARK BOX
+
+Floating card aligned to header left.
+
+Contains:
+
+Dynamic title:
+
+“…and then there were X”
+or
+“Alas! There were none…”
+
+
+---
+
+Candle Graph
+
+For each benchmark + participant total:
+
+Body: Entry → Current
+
+Wick: Season High / Low
+
+Color: green/red
+
+Y axis:
+
+Hidden
+
+Zero centered
+
+Fixed ±100%
+
+Actual min/max expands ±5%
+
+X axis:
+
+Name (horizontal)
+
+% below name (green/red)
+
+
+---
+
+Share Button (footer)
+
+Transparent → red → X
+
+Options:
+
+Share to Discord
+
+Save Image
+
+Snapshot includes title + graph only.
+
+
+---
+
+USER PICK BOX (Feature ON)
+
+Username
+Large stock symbol
+Company name
+Entry + P&L
+Spacer
+Purple translucent rank strip (rank or percentile)
+Spacer
+
+Includes Share button.
+
+
+---
+
+RANKING SUMMARY (Season)
+
+2×2 grid:
+
+Top-left: Winner (green tint)
+Bottom-right: Loser (red tint)
+
+Other diagonal:
+
+Top-right: ranks 2–3 (green bars L→R)
+Bottom-left: bottom ranks (red bars R→L)
+
+Includes Share.
+
+
+---
+
+MONTHLY SUMMARY
+
+Same layout as Ranking.
+
+Monthly calculation base.
+
+Includes Share.
+
+
+---
+
+BOTTOM ROW
+
+Expanded:
+
+SeasonTable (~75%) | Ticker (~25%)
+
+Medium:
+
+SeasonTable
+Ticker
+
+Compact:
+
+SeasonTable
+Ticker
+
+
+---
+
+SEASON TABLE
+
+NOT infinite.
+
+Current month always centered and largest.
+
+Size ladder:
+
+Center → Adjacent → Outer previews (~20%)
+
+Scroll moves ONE month per action.
+
+Past card:
+
+Month
+ISB Stock Mock
+Monthly P&L
+Winner
+Pick + P&L
+
+Current card:
+
+Month
+ISB Stock Mock
+Live P&L
+
+Future card:
+
+Quote (max 3 lines)
+
+
+---
+
+TICKER BOX
+
+Shows roster.
+
+Header:
+
+“See full roster”
+
+Auto feed:
+
+One user at a time:
+
+Stock
+Username
+P&L
+
+Expanded/Medium: Vertical auto scroll
+
+Compact: Horizontal swipe
+
+
+---
+
+Nemesis Search
+
+Exists ONLY when Feature My Pick = ON.
+
+Behavior:
+
+If Feature OFF: Ticker occupies full height.
+
+If Feature toggled ON after login:
+
+Ticker bottom slides UP
+Nemesis Search swipes UP underneath.
+
+Combined height:
+
+Ticker + Nemesis Search = SeasonTable
+
+Nemesis Search:
+
+Fuzzy username
+
+Temporary
+
+Default rival = competition total
+
+Selecting nemesis:
+
+Updates header Nemesis Bar
+
+Activates rivalry visuals
+
+Calculates gap %
+
+
+---
+
+INTERACTIONS
+
+Feature OFF → ON:
+
+Benchmark shrinks
+Ranking shifts
+UserPick swipes DOWN into place
+
+Reverse for ON → OFF.
+
+Share buttons:
+
+Expanded: Dropdown
+
+Compact: Bottom sheet
+
+SeasonTable:
+
+Scroll 1 month per action.
+
+Ticker:
+
+Auto or swipe depending on mode.
+
+
+---
+
+PERFORMANCE
+
+Prefer transform + opacity.
+
+Avoid layout thrashing.
+
+
+---
+
+CORE INTENT
+
+This UI must feel alive.
+
+Not a dashboard.
+
+A competitive arena.
+
+User emotional path:
+
+Market → Group → Me → Rival.

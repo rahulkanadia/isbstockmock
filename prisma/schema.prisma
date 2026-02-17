@@ -9,79 +9,60 @@ datasource db {
 }
 
 model User {
-  id        String   @id            // Discord ID
-  username  String
-  avatarUrl String?
-  createdAt DateTime @default(now())
-  
-  // New Field
-  isBanned  Boolean  @default(false)
-
-  picks          Pick[]
-  monthlyChanges MonthlyChange[]
-}
-
-model Symbol {
-  id         String   @id @default(cuid())
-  baseSymbol String
-  exchange   String   // NSE | BSE | NSE_SME | BSE_SME
-  name       String
-  active     Boolean  @default(true)
-
-  @@unique([baseSymbol, exchange])
+  id                    String   @id
+  username              String
+  avatarUrl             String?
+  isExcluded            Boolean  @default(false)
+  currentSeasonReturn   Float    @default(0)
+  currentMonthlyReturn  Float    @default(0)
+  pick                  Pick?
 }
 
 model Pick {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol             String
+  entryPrice         Float
+  entryDate          DateTime
+  previousMonthClose Float?
+}
+
+model Benchmark {
+  id               String @id @default(cuid())
+  ticker           String @unique
+  name             String
+  openingPriceJan1 Float
+}
+
+model LatestPrice {
   id         String   @id @default(cuid())
-  userId     String
-
-  baseSymbol String
-  exchange   String
-
-  entryDate  DateTime
-  entryPrice Float
-
-  exitDate   DateTime?
-  exitPrice  Float?
-  pnlPercent Float?
-
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([baseSymbol, exchange])
+  symbol     String   @unique
+  price      Float
+  seasonHigh Float?
+  seasonLow  Float?
+  updatedAt  DateTime @updatedAt
 }
 
-model MonthlyChange {
+model MonthlyClose {
+  id     String   @id @default(cuid())
+  symbol String
+  date   DateTime
+  close  Float
+
+  @@unique([symbol, date])
+}
+
+model PriceHistory {
   id        String   @id @default(cuid())
-  userId    String
-  yearMonth String   // YYYY-MM
-  changedAt DateTime @default(now())
+  symbol    String
+  date      DateTime
+  price     Float
 
-  // FIXED: Added relation back to User
-  user User @relation(fields: [userId], references: [id])
-
-  @@unique([userId, yearMonth])
+  @@unique([symbol, date])
 }
 
-model DailyPrice {
-  id         String   @id @default(cuid())
-  baseSymbol String
-  exchange   String
-  date       DateTime
-  open       Float
-  close      Float
-
-  @@unique([baseSymbol, exchange, date])
-}
-
-model AuditLog {
-  id        String   @id @default(cuid())
-  adminId   String?
-  action    String
-  message   String
-  meta      Json?
-  success   Boolean
-  createdAt DateTime @default(now())
+model SystemState {
+  key           String   @id @default("global")
+  value         String
 }

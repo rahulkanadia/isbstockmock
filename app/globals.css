@@ -1,52 +1,29 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  /* Theme: Eggshell / Purple / Black / White */
-  --bg-page: #FAF9F6; /* Eggshell */
-  --bg-card: #FFFFFF;
-  --primary: #7C3AED; /* Purple 600 */
-  --primary-hover: #6D28D9; /* Purple 700 */
-  --text-main: #171717;
-  --text-muted: #737373;
-  --border-subtle: #E5E5E5;
-  
-  /* Status Colors */
-  --positive: #16A34A; /* Green 600 */
-  --negative: #DC2626; /* Red 600 */
-  
-  /* Shadows */
-  --shadow-diffused: 0 8px 24px -6px rgba(0, 0, 0, 0.08);
-  --shadow-float: 0 20px 40px -10px rgba(0, 0, 0, 0.12);
-  --shadow-inner-glow: inset 0 0 20px rgba(124, 58, 237, 0.05);
-}
-
-@theme inline {
-  --color-background: var(--bg-page);
-  --color-card: var(--bg-card);
-  --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  
-  --shadow-soft: var(--shadow-diffused);
-  --shadow-strong: var(--shadow-float);
+  --eggshell: #FDFDF8;
+  --ink: #1A1A1B;
+  --discord: #5865F2;
+  --success: #22C55E;
+  --danger: #EF4444;
 }
 
 body {
-  background: var(--bg-page);
-  color: var(--text-main);
-  font-family: var(--font-sans), sans-serif;
-  -webkit-font-smoothing: antialiased;
+  background-color: var(--eggshell);
+  color: var(--ink);
+  overflow-x: hidden;
 }
 
-/* Custom Utilities */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+.arena-card {
+  @apply bg-white relative overflow-hidden flex flex-col;
+  box-shadow: 0 4px 20px -5px rgba(26, 26, 27, 0.08);
+  border-radius: 1rem;
+  transition: transform 0.4s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.4s ease;
 }
 
-/* Diagonal Split Card Utility */
-.diagonal-clip-upper {
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+.arena-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -10px rgba(26, 26, 27, 0.15);
 }
