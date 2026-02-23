@@ -2,91 +2,91 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { fetchMarketData } from '@/lib/marketData';
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  try {
-    // 1. AUTH CHECK: Allow if Admin session exists OR Secret is in URL
-    const { searchParams } = new URL(request.url);
-    const secret = searchParams.get('secret');
-    const session = await getServerSession(authOptions);
+  const { searchParams } = new URL(request.url);
+  const secret = searchParams.get('secret');
+  const session = await getServerSession(authOptions);
 
-    const isCronSecretValid = secret === process.env.CRON_SECRET;
-    const isAdmin = session?.user && (process.env.ADMIN_IDS?.split(',').includes(session.user.id));
+  const isCronSecretValid = secret === process.env.CRON_SECRET;
+  const isAdmin = session?.user && (session.user as any).adminLevel >= 2;
+  const isLocal = process.env.NODE_ENV === "development";
 
-    if (!isCronSecretValid && !isAdmin) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. DATA FETCHING
-    const benchmarks = await prisma.benchmark.findMany({ select: { ticker: true } });
-    const userPicks = await prisma.pick.findMany({ select: { symbol: true } });
-
-    const symbols = Array.from(new Set([
-      ...benchmarks.map(b => b.ticker),
-      ...userPicks.map(p => p.symbol)
-    ]));
-
-    const marketData = await fetchMarketData(symbols);
-
-    let updated = 0;
-    const now = new Date();
-    // Normalize date to start of day for PriceHistory uniqueness if needed, 
-    // though your schema uses symbol_date.
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    for (const d of marketData) {
-      const existing = await prisma.latestPrice.findUnique({
-        where: { symbol: d.symbol }
-      });
-
-      // Calculate Running Highs/Lows
-      const high = existing?.seasonHigh ? Math.max(existing.seasonHigh, d.dayHigh) : d.dayHigh;
-      const low = existing?.seasonLow ? Math.min(existing.seasonLow, d.dayLow) : d.dayLow;
-
-      // Update Latest Prices
-      await prisma.latestPrice.upsert({
-        where: { symbol: d.symbol },
-        update: { 
-          price: d.price, 
-          seasonHigh: high, 
-          seasonLow: low,
-          updatedAt: now 
-        },
-        create: { 
-          symbol: d.symbol, 
-          price: d.price, 
-          seasonHigh: d.dayHigh, 
-          seasonLow: d.dayLow 
-        }
-      });
-
-      // Update Historical Log (Using normalized 'today' to avoid duplicate rows for the same day)
-      await prisma.priceHistory.upsert({
-        where: {
-          symbol_date: {
-            symbol: d.symbol,
-            date: today
-          }
-        },
-        update: { price: d.price },
-        create: {
-          symbol: d.symbol,
-          date: today,
-          price: d.price
-        }
-      });
-
-      updated++;
-    }
-
-    return NextResponse.json({ success: true, updatedCount: updated });
-
-  } catch (e: any) {
-    console.error("Cron Error:", e.message);
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+  if (!isCronSecretValid && !isAdmin && !isLocal) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Create a ReadableStream to stream progress to the client
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (data: any) => controller.enqueue(new TextEncoder().encode(JSON.stringify(data) + '\n'));
+
+      try {
+        const benchmarks = await prisma.benchmark.findMany({ select: { ticker: true } });
+        const userPicks = await prisma.pick.findMany({ select: { symbol: true } });
+
+        const symbols = Array.from(new Set([
+          ...benchmarks.map(b => b.ticker.toUpperCase()),
+          ...userPicks.map(p => p.symbol.toUpperCase()).filter(s => s !== 'PENDING')
+        ]));
+
+        if (symbols.length === 0) {
+          send({ type: 'done', attempted: 0, updatedCount: 0, failedCount: 0, failedSymbols: [] });
+          controller.close();
+          return;
+        }
+
+        const totalAttempted = symbols.length;
+        send({ type: 'start', totalAttempted });
+
+        // Bulk fetch all data from Yahoo Finance
+        const marketData = await fetchMarketData(symbols);
+        
+        let updatedCount = 0;
+        let failedCount = 0;
+        const failedSymbols: string[] = [];
+        const now = new Date();
+
+        // Loop through and write to the DB, streaming progress as we go
+        for (let i = 0; i < symbols.length; i++) {
+          const sym = symbols[i];
+          const d = marketData.find((m: any) => m && m.symbol.toUpperCase() === sym);
+
+          if (d && d.price > 0) {
+            const existing = await prisma.latestPrice.findUnique({ where: { symbol: sym } });
+            const high = existing?.seasonHigh ? Math.max(existing.seasonHigh, d.dayHigh) : d.dayHigh;
+            const low = existing?.seasonLow ? Math.min(existing.seasonLow, d.dayLow) : d.dayLow;
+
+            await prisma.latestPrice.upsert({
+              where: { symbol: sym },
+              update: { price: d.price, seasonHigh: high, seasonLow: low, updatedAt: now },
+              create: { symbol: sym, price: d.price, seasonHigh: d.dayHigh, seasonLow: d.dayLow }
+            });
+            updatedCount++;
+          } else {
+            failedCount++;
+            failedSymbols.push(sym);
+          }
+
+          // Emit progress to UI
+          send({ type: 'progress', attempted: i + 1, updatedCount, failedCount });
+        }
+
+        send({ type: 'done', attempted: totalAttempted, updatedCount, failedCount, failedSymbols, updatedAt: now.toISOString() });
+      } catch (e: any) {
+        send({ type: 'error', message: e.message });
+      } finally {
+        controller.close();
+      }
+    }
+  });
+
+  // Return NDJSON (Newline Delimited JSON) stream
+  return new Response(stream, { 
+    headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' } 
+  });
 }

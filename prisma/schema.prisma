@@ -1,70 +1,83 @@
+// [1]
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
+// [11]
 
 model User {
-  id                    String   @id
-  username              String
-  avatarUrl             String?
-  isExcluded            Boolean  @default(false)
-  currentSeasonReturn   Float    @default(0)
-  currentMonthlyReturn  Float    @default(0)
-  pick                  Pick?
+  id                    String   @id
+  username              String
+  avatarUrl             String?
+  isExcluded            Boolean  @default(false)
+  currentSeasonReturn   Float    @default(0)
+  currentMonthlyReturn  Float    @default(0)
+  // Why: The definitive Phase 4 addition to support hierarchical RBAC.
+  adminLevel            Int      @default(0)
+// [21]
+  pick                  Pick?
 }
 
 model Pick {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  symbol             String
-  baseSymbol         String?  // <--- ADD THIS (Optional)
-  exchange           String?  // <--- ADD THIS (Optional)
-  entryPrice         Float
-  entryDate          DateTime
-  previousMonthClose Float?
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol             String
+  baseSymbol         String?  
+// [31]
+  exchange           String?  
+  entryPrice         Float
+  entryDate          DateTime
+  previousMonthClose Float?
 }
 
 model Benchmark {
-  id               String @id @default(cuid())
-  ticker           String @unique
-  name             String
-  openingPriceJan1 Float
+  id               String @id @default(cuid())
+  ticker           String @unique
+// [41]
+  name             String
+  openingPriceJan1 Float
 }
 
 model LatestPrice {
-  id         String   @id @default(cuid())
-  symbol     String   @unique
-  price      Float
-  seasonHigh Float?
-  seasonLow  Float?
-  updatedAt  DateTime @updatedAt
+  id         String   @id @default(cuid())
+  symbol     String   @unique
+  price      Float
+  seasonHigh Float?
+  seasonLow  Float?
+// [51]
+  dayHigh    Float?   
+  dayLow     Float?   
+  updatedAt  DateTime @updatedAt
 }
 
 model MonthlyClose {
-  id     String   @id @default(cuid())
-  symbol String
-  date   DateTime
-  close  Float
+  id     String   @id @default(cuid())
+  symbol String
+  date   DateTime
+// [61]
+  close  Float
 
-  @@unique([symbol, date])
+  @@unique([symbol, date])
 }
 
 model PriceHistory {
-  id        String   @id @default(cuid())
-  symbol    String
-  date      DateTime
-  price     Float
+  id        String   @id @default(cuid())
+  symbol    String
+  date      DateTime
+// [71]
+  price     Float
 
-  @@unique([symbol, date])
+  @@unique([symbol, date])
 }
 
 model SystemState {
-  key           String   @id @default("global")
-  value         String
+  key           String   @id @default("global")
+  value         String
 }
+// [81]

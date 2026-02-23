@@ -1,33 +1,23 @@
-import { PrismaClient } from "@prisma/client";
-
-const isLive = process.env.TESTONLIVE === "1";
-
-// DATABASE_URL = Pooled Neon (Reads)
-// DIRECT_URL = Direct Neon (Writes/Migrations)
-// DATABASE_LOCAL = Local Postgres
-const databaseUrl = isLive 
-  ? process.env.DATABASE_URL 
-  : process.env.DATABASE_LOCAL;
-
-if (!databaseUrl) {
-  throw new Error(`Missing ${isLive ? 'DATABASE_URL' : 'DATABASE_LOCAL'} in .env`);
-}
+import { PrismaClient } from '@prisma/client'
 
 const prismaClientSingleton = () => {
+  // Automatically routes localhost to your local postgres, and production to Neon
+  const isLocal = process.env.NODE_ENV === 'development';
+  const url = isLocal 
+    ? (process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL) 
+    : process.env.DATABASE_URL;
+
   return new PrismaClient({
     datasources: {
-      db: { url: databaseUrl },
-    },
+      db: { url }
+    }
   });
-};
-
-type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClientSingleton | undefined;
-};
-
-export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
 }
+
+declare global {
+  var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
+}
+
+export const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
+
+if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma

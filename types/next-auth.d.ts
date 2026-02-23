@@ -1,29 +1,28 @@
+// [1]
 import NextAuth, { DefaultSession } from "next-auth";
-
+// Why: Redefining module types allows us to inject custom RBAC fields
+// into the session securely without breaking NextAuth's internal typing.
 declare module "next-auth" {
-  /**
-   * Extending the built-in session user object
-   */
   interface Session {
     user: {
       id: string;
-      isAdmin: boolean;
+      // How: Replaced the binary boolean with a hierarchical 1-4 scale
+// [11]
+      adminLevel: number;
       username: string;
     } & DefaultSession["user"];
   }
-
   interface User {
     id: string;
-    isAdmin: boolean;
+    adminLevel: number;
     username: string;
   }
+// [21]
 }
-
 declare module "next-auth/jwt" {
-  /**
-   * Extending the built-in JWT object
-   */
   interface JWT {
     uid?: string;
+    adminLevel?: number;
   }
 }
+// [31]

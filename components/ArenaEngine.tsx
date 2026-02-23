@@ -21,7 +21,6 @@ export default function ArenaEngine({
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Keyboard listener for Esc key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) {
@@ -33,12 +32,10 @@ export default function ArenaEngine({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
-  // Data toggle logic
   const data = useMemo(() => {
     return tab === 'season' ? users : (monthlyStandings || users);
   }, [tab, users, monthlyStandings]);
 
-  // Search logic
   const filteredData = useMemo(() => {
     if (!query) return data;
     const q = query.toLowerCase();
@@ -57,7 +54,7 @@ export default function ArenaEngine({
 
   return (
     <div className="arena-card h-full relative overflow-hidden flex flex-col bg-white border border-gray-100">
-      
+
       {/* HEADER BAR */}
       <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-20">
         <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
@@ -93,7 +90,7 @@ export default function ArenaEngine({
         </div>
       )}
 
-      {/* SEARCH BOX: Tinted & Smooth Transition */}
+      {/* SEARCH BOX */}
       <div className="relative z-20">
         <AnimatePresence>
           {open && view === 'roster' && (
@@ -130,11 +127,13 @@ export default function ArenaEngine({
         ) : (
           <div className="h-full overflow-y-auto no-scrollbar">
             {filteredData.map((u: any) => {
-              // Calculate rank based on original unsorted data to maintain consistency
               const rank = users.findIndex((orig: any) => orig.username === u.username) + 1;
               const isMe = activeUser?.username === u.username;
               const isNemesis = currentNemesis?.username === u.username;
-              const returnVal = tab === 'season' ? u.seasonReturn : (u.monthlyReturn || u.seasonReturn);
+              const returnVal = tab === 'season' ? u.seasonReturn : (u.monthlyReturn ?? 0);
+              
+              const avatar = u.avatarUrl || u.image;
+              const isPending = u.pick?.symbol === "PENDING";
 
               return (
                 <div 
@@ -146,7 +145,7 @@ export default function ArenaEngine({
                     isNemesis ? "bg-red-50" : "bg-white hover:bg-gray-50"
                   )}
                 >
-                   {/* Column 1: Rank (Rounded Square) */}
+                   {/* Column 1: Rank */}
                    <div className="w-10">
                       <div className={cn(
                         "w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-black",
@@ -158,25 +157,26 @@ export default function ArenaEngine({
 
                    {/* Column 2: Avatar */}
                    <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 ml-2 overflow-hidden border border-gray-200">
-                      {u.image ? <img src={u.image} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gray-200" />}
+                      {avatar ? <img src={avatar} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gray-200 flex items-center justify-center text-[8px]">?</div>}
                    </div>
 
-                   {/* Column 3: Player (Narrower) */}
+                   {/* Column 3: Player */}
                    <div className={cn("w-24 ml-4 truncate font-bold", isMe ? "text-sm" : "text-xs")}>
                       @{u.username}
                    </div>
 
-                   {/* Column 4: Stock (Same treatment as player) */}
+                   {/* Column 4: Stock */}
                    <div className={cn("flex-1 ml-4 text-center truncate font-bold uppercase tracking-tighter", isMe ? "text-xs text-gray-300" : "text-[10px] text-gray-400")}>
-                      {u.pick?.symbol?.split('.')[0]}
+                      {isPending ? "---" : u.pick?.symbol?.split('.')[0]}
                    </div>
 
                    {/* Column 5: P&L */}
                    <div className={cn("w-16 text-right font-mono font-black", 
                      isMe ? "text-sm" : "text-xs",
-                     returnVal >= 0 ? "text-success" : "text-danger"
+                     returnVal >= 0 ? "text-success" : "text-danger",
+                     isPending && "text-gray-400"
                    )}>
-                      {returnVal.toFixed(1)}%
+                      {isPending ? "0.0%" : `${returnVal.toFixed(1)}%`}
                    </div>
                 </div>
               );

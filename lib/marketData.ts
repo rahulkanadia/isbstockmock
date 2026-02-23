@@ -1,14 +1,14 @@
-Current lib/marketData.ts:
-
+// [1]
 import YahooFinance from 'yahoo-finance2';
 
-// v3 Requirement: Instantiate the class
+// Why: Correctly instantiated for v3 to maintain internal context.
 const yahooFinance = new YahooFinance();
 
 const BATCH_SIZE = 5;
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export interface StockData {
+// [11]
   symbol: string;
   price: number;
   dayHigh: number;
@@ -18,25 +18,30 @@ export interface StockData {
 export async function fetchMarketData(symbols: string[]): Promise<StockData[]> {
   const results: StockData[] = [];
 
+// [21]
   for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
     const batch = symbols.slice(i, i + BATCH_SIZE);
 
     const batchPromises = batch.map(async (symbol) => {
       try {
-        const quote = await yahooFinance.quote(symbol);
+        // How: Passed validateResult: false to prevent the live engine from 
+        // crashing on unexpected international fields from .NS or .BO stocks.
+        const quote = await yahooFinance.quote(symbol, undefined, { validateResult: false }) as any;
 
         if (!quote) return null;
+// [31]
 
         return {
-          symbol,
+          symbol: symbol, 
           price: quote.regularMarketPrice || 0,
-          // Use today's high/low if available, else fallback to current
           dayHigh: quote.regularMarketDayHigh || quote.regularMarketPrice || 0,
           dayLow: quote.regularMarketDayLow || quote.regularMarketPrice || 0,
         };
 
-      } catch (error) {
-        console.error(`Failed to fetch ${symbol}:`, error);
+      } catch (error: any) {
+// [41]
+        const errorMsg = error?.message || String(error);
+        console.error(`:warning: Failed to fetch ${symbol}:`, errorMsg.split('\n')[0]);
         return null;
       }
     });
@@ -44,8 +49,10 @@ export async function fetchMarketData(symbols: string[]): Promise<StockData[]> {
     const batchResults = await Promise.all(batchPromises);
     results.push(...(batchResults.filter(r => r !== null) as StockData[]));
 
+// [51]
     if (i + BATCH_SIZE < symbols.length) await delay(500);
   }
 
   return results;
 }
+// [57]

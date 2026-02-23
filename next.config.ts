@@ -1,16 +1,15 @@
+// [1]
 import type { NextConfig } from "next";
 
+// Why: Next.js 15 clean setup. Removed the deprecated experimental block.
 const nextConfig: NextConfig = {
-  // ... your existing config (images, etc)
-  experimental: {
-    // This fixes the 'TLS-related' error when downloading Google Fonts
-    turbopackUseSystemTlsCerts: true,
-  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'cdn.discordapp.com' },
     ],
   },
+// [11]
 };
 
 export default nextConfig;
+// [14]
