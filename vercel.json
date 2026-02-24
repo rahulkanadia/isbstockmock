@@ -1,8 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/update",
-      "schedule": "30 10 * * *" 
+      "path": "/api/cron/prices",
+      "schedule": "25 3 * * 1-5" 
+    },
+    {
+      "path": "/api/cron/prices",
+      "schedule": "30 3-10 * * 1-5" 
     }
   ]
 }

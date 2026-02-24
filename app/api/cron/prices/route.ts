@@ -9,10 +9,16 @@ export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const secret = searchParams.get('secret');
+  const urlSecret = searchParams.get('secret');
+  const authHeader = request.headers.get('authorization');
+  
   const session = await getServerSession(authOptions);
 
-  const isCronSecretValid = secret === process.env.CRON_SECRET;
+  // Checks Vercel's automated header OR your Admin UI's URL parameter
+  const isCronSecretValid = 
+    authHeader === `Bearer ${process.env.CRON_SECRET}` || 
+    urlSecret === process.env.CRON_SECRET;
+    
   const isAdmin = session?.user && (session.user as any).adminLevel >= 2;
   const isLocal = process.env.NODE_ENV === "development";
 
@@ -20,7 +26,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Create a ReadableStream to stream progress to the client
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: any) => controller.enqueue(new TextEncoder().encode(JSON.stringify(data) + '\n'));
@@ -43,15 +48,13 @@ export async function GET(request: Request) {
         const totalAttempted = symbols.length;
         send({ type: 'start', totalAttempted });
 
-        // Bulk fetch all data from Yahoo Finance
         const marketData = await fetchMarketData(symbols);
-        
+
         let updatedCount = 0;
         let failedCount = 0;
         const failedSymbols: string[] = [];
         const now = new Date();
 
-        // Loop through and write to the DB, streaming progress as we go
         for (let i = 0; i < symbols.length; i++) {
           const sym = symbols[i];
           const d = marketData.find((m: any) => m && m.symbol.toUpperCase() === sym);
@@ -72,9 +75,46 @@ export async function GET(request: Request) {
             failedSymbols.push(sym);
           }
 
-          // Emit progress to UI
           send({ type: 'progress', attempted: i + 1, updatedCount, failedCount });
         }
+
+        // ==========================================
+        // SELF-HEALING MONTHLY ROLLOVER LOGIC
+        // ==========================================
+        const lastDayOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        const startOfLastDay = new Date(now.getFullYear(), now.getMonth(), 0, 0, 0, 0);
+
+        const hasRolledOver = await prisma.monthlyClose.findFirst({
+          where: {
+            date: { gte: startOfLastDay, lte: lastDayOfPrevMonth }
+          }
+        });
+
+        if (!hasRolledOver) {
+          const activeUsers = await prisma.user.findMany({
+            where: { isExcluded: false },
+            include: { pick: true }
+          });
+
+          for (const u of activeUsers) {
+            if (!u.pick || u.pick.symbol === 'PENDING') continue;
+
+            const liveData = await prisma.latestPrice.findUnique({
+              where: { symbol: u.pick.symbol.toUpperCase() }
+            });
+
+            const closingPrice = liveData?.price || u.pick.entryPrice;
+
+            await prisma.monthlyClose.upsert({
+              where: {
+                symbol_date: { symbol: u.pick.symbol, date: lastDayOfPrevMonth }
+              },
+              update: { close: closingPrice },
+              create: { symbol: u.pick.symbol, date: lastDayOfPrevMonth, close: closingPrice }
+            });
+          }
+        }
+        // ==========================================
 
         send({ type: 'done', attempted: totalAttempted, updatedCount, failedCount, failedSymbols, updatedAt: now.toISOString() });
       } catch (e: any) {
@@ -85,7 +125,6 @@ export async function GET(request: Request) {
     }
   });
 
-  // Return NDJSON (Newline Delimited JSON) stream
   return new Response(stream, { 
     headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' } 
   });
