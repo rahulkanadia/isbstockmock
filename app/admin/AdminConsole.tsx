@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useMemo, useTransition, useEffect } from "react";
+import { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { 
   LogOut, Activity, ShieldAlert, Clock, RefreshCw, 
-  Search, Save, XCircle, ExternalLink, X, AlertCircle, Filter, Loader2, FilterX
+  Search, Save, XCircle, ExternalLink, X, AlertCircle, Filter, Loader2, FilterX, FileText
 } from "lucide-react";
 import { saveAdminEdits } from "./actions";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const formatDateForInput = (dateStr: string) => new Date(dateStr).toISOString().split('T')[0];
 
-export default function AdminConsole({ initialUsers, admins, stats }: any) {
+export default function AdminConsole({ initialUsers, admins, stats, auditLogs = [] }: any) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
@@ -22,6 +23,9 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
   // Master Filter State
   const [filterMode, setFilterMode] = useState<string>('all');
   
+  // Tab State for Top Right Box
+  const [activeTab, setActiveTab] = useState<'admins' | 'audit'>('admins');
+
   // Live Streaming Fetch State
   const [fetchState, setFetchState] = useState<'idle' | 'fetching' | 'done'>('idle');
   const [fetchAttempted, setFetchAttempted] = useState(0);
@@ -29,6 +33,8 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
   const [fetchFailed, setFetchFailed] = useState(0);
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [liveLastUpdate, setLiveLastUpdate] = useState(stats.lastUpdate);
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -59,7 +65,6 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
       if (filterMode === 'multistock') result = result.filter((u: any) => multiUserSymbols.includes(u.symbol));
       if (filterMode === 'multipick') result = []; 
       
-      // NEW: Failed symbols quick filter
       if (filterMode === 'failed_fetch') result = result.filter((u: any) => failedSymbols.includes(u.symbol));
     }
     
@@ -72,6 +77,14 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
     }
     return result;
   }, [query, filterMode, initialUsers, multiUserSymbols, failedSymbols]);
+
+  // Virtualizer Setup
+  const rowVirtualizer = useVirtualizer({
+    count: filteredUsers.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 61, 
+    overscan: 10,
+  });
 
   const handleEdit = (userId: string, field: string, value: any) => {
     setEdits(prev => ({ ...prev, [userId]: { ...(prev[userId] || {}), [field]: value } }));
@@ -144,7 +157,6 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
 
   const hasChanges = Object.keys(edits).length > 0;
 
-  // New Grid Table Row Component
   const StatRow = ({ label, stat, prefix }: any) => (
     <div className="flex items-center py-1.5 border-b border-gray-50 last:border-0 group">
       <button onClick={() => setFilterMode(`${prefix}_total`)} className="flex-1 text-sm font-bold text-gray-600 hover:text-[#5865F2] transition-colors text-left truncate">{label}</button>
@@ -182,7 +194,6 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[320px] flex-shrink-0">
           
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
-            {/* GRID TABLE HEADER */}
             <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center pr-7">
                <div className="flex-1 flex items-center gap-2">
                  <Activity size={14} className="text-gray-500" /> 
@@ -219,7 +230,6 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
               </div>
               
               <div className="mt-2 pt-2 border-t border-gray-100">
-                {/* PERSISTENT LIVE FETCH STATS */}
                 <div className="flex justify-between items-center text-[10px] font-bold tracking-widest uppercase mb-2">
                   <div className="flex items-center gap-1 text-gray-400">
                     <Clock size={12} /> <span className="font-mono">{liveLastUpdate}</span>
@@ -255,29 +265,68 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-              <h2 className="text-xs font-black uppercase tracking-widest text-gray-500 flex items-center gap-2"><ShieldAlert size={14} /> Admin Access Roster</h2>
-              <span className="text-[10px] font-black uppercase bg-gray-200 text-gray-600 px-2 py-0.5 rounded">{admins.length} Admins</span>
+              <div className="flex gap-6">
+                <button 
+                  onClick={() => setActiveTab('admins')} 
+                  className={cn("text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-colors", activeTab === 'admins' ? "text-ink" : "text-gray-400 hover:text-gray-600")}
+                >
+                  <ShieldAlert size={14} /> Admins <span className={cn("px-1.5 py-0.5 rounded ml-1", activeTab === 'admins' ? "bg-gray-200 text-gray-600" : "bg-gray-100 text-gray-400")}>{admins.length}</span>
+                </button>
+                <button 
+                  onClick={() => setActiveTab('audit')} 
+                  className={cn("text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-colors", activeTab === 'audit' ? "text-ink" : "text-gray-400 hover:text-gray-600")}
+                >
+                  <FileText size={14} /> Audit Log
+                </button>
+              </div>
             </div>
+            
             <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
-              {admins.map((admin: any) => (
-                <div key={admin.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors border-b border-transparent hover:border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-black text-gray-500">{admin.username.charAt(0).toUpperCase()}</div>
-                    <span className="text-sm font-bold text-ink">@{admin.username}</span>
+              {activeTab === 'admins' ? (
+                admins.map((admin: any) => (
+                  <div key={admin.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors border-b border-transparent hover:border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-black text-gray-500">{admin.username.charAt(0).toUpperCase()}</div>
+                      <span className="text-sm font-bold text-ink">@{admin.username}</span>
+                    </div>
+                    <select 
+                      value={edits[admin.id]?.adminLevel !== undefined ? edits[admin.id].adminLevel : admin.level}
+                      onChange={(e) => handleEdit(admin.id, 'adminLevel', parseInt(e.target.value))}
+                      className={`text-xs font-bold border rounded-md px-3 py-1.5 outline-none cursor-pointer transition-all ${edits[admin.id]?.adminLevel !== undefined ? 'bg-yellow-100 border-yellow-300 text-yellow-800' : 'bg-gray-100 border-transparent text-ink hover:bg-gray-200'}`}
+                    >
+                      <option value={4}>Level 4 (Superadmin)</option>
+                      <option value={3}>Level 3 (Manager)</option>
+                      <option value={2}>Level 2 (Moderator)</option>
+                      <option value={1}>Level 1 (Helper)</option>
+                      <option value={0}>Level 0 (Remove)</option>
+                    </select>
                   </div>
-                  <select 
-                    value={edits[admin.id]?.adminLevel !== undefined ? edits[admin.id].adminLevel : admin.level}
-                    onChange={(e) => handleEdit(admin.id, 'adminLevel', parseInt(e.target.value))}
-                    className={`text-xs font-bold border rounded-md px-3 py-1.5 outline-none cursor-pointer transition-all ${edits[admin.id]?.adminLevel !== undefined ? 'bg-yellow-100 border-yellow-300 text-yellow-800' : 'bg-gray-100 border-transparent text-ink hover:bg-gray-200'}`}
-                  >
-                    <option value={4}>Level 4 (Superadmin)</option>
-                    <option value={3}>Level 3 (Manager)</option>
-                    <option value={2}>Level 2 (Moderator)</option>
-                    <option value={1}>Level 1 (Helper)</option>
-                    <option value={0}>Level 0 (Remove)</option>
-                  </select>
-                </div>
-              ))}
+                ))
+              ) : (
+                auditLogs.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-xs font-bold text-gray-400 italic">No logs recorded yet.</div>
+                ) : (
+                  auditLogs.map((log: any) => {
+                    const targetUser = initialUsers.find((u: any) => u.id === log.targetUserId);
+                    const targetName = targetUser ? `@${targetUser.username.replace(/^legacy_/, '')}` : `ID: ${log.targetUserId.substring(0, 8)}`;
+                    
+                    return (
+                      <div key={log.id} className="p-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                        <div className="flex justify-between items-center text-[10px] text-gray-400 mb-1.5">
+                          <span className="font-mono">{new Date(log.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}</span>
+                          <span className="font-black uppercase tracking-widest">{log.action}</span>
+                        </div>
+                        <div className="text-sm font-medium text-ink">
+                          <span className="font-bold text-[#5865F2]">@{log.adminUsername}</span> updated <span className="font-bold">{targetName}</span>
+                        </div>
+                        <div className="mt-2 p-2 bg-gray-100 rounded text-[10px] font-mono text-gray-500 break-all">
+                          {log.details}
+                        </div>
+                      </div>
+                    );
+                  })
+                )
+              )}
             </div>
           </div>
         </div>
@@ -287,7 +336,6 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
           <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between sticky top-0 z-30 flex-shrink-0">
             <h2 className="text-sm font-black uppercase tracking-widest text-ink">Competition Data</h2>
             
-            {/* Toggles, Clear Button, and Fixed-Width Search Box */}
             <div className="flex items-center gap-3 flex-1 justify-end mx-4">
               
               {filterMode !== 'all' && (
@@ -299,7 +347,6 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
                 </button>
               )}
 
-              {/* Fixed Flex-Shrink-0 Search Container */}
               <div className="relative w-72 flex-shrink-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                 <input 
@@ -363,10 +410,10 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-white relative">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead className="sticky top-0 bg-white shadow-sm z-10 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                <tr>
+          <div ref={tableContainerRef} className="flex-1 overflow-y-auto bg-white relative">
+            <table className="w-full text-left border-collapse min-w-[800px] table-fixed">
+              <thead className="sticky top-0 bg-white shadow-sm z-10 text-[10px] font-black uppercase tracking-widest text-gray-400 block w-full">
+                <tr className="flex w-full">
                   <th className="p-4 border-b border-gray-100 w-[20%]">User</th>
                   <th className="p-4 border-b border-gray-100 w-[20%]">Entry Date</th>
                   <th className="p-4 border-b border-gray-100 w-[25%]">Stock Pick</th>
@@ -374,13 +421,18 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
                   <th className="p-4 border-b border-gray-100 w-[20%]">Status</th>
                 </tr>
               </thead>
-              <tbody className="text-sm font-bold">
+              
+              <tbody 
+                className="block relative w-full" 
+                style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+              >
                 {filteredUsers.length === 0 ? (
-                  <tr>
-                     <td colSpan={5} className="p-8 text-center text-gray-400 italic">No users match the current filter.</td>
+                  <tr className="flex w-full">
+                     <td className="p-8 text-center text-gray-400 italic w-full">No users match the current filter.</td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user: any) => {
+                  rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const user = filteredUsers[virtualRow.index];
                     const userEdits = edits[user.id] || {};
                     const isRowEdited = Object.keys(userEdits).length > 0;
                     const cleanUsername = user.username.replace(/^legacy_/, '');
@@ -391,22 +443,29 @@ export default function AdminConsole({ initialUsers, admins, stats }: any) {
                     const displayStatus = userEdits.isExcluded !== undefined ? userEdits.isExcluded : user.isExcluded;
 
                     return (
-                      <tr key={user.id} className={`border-b border-gray-50 transition-colors ${isRowEdited ? 'bg-yellow-50/30' : 'hover:bg-gray-50'}`}>
-                        <td className="p-4 text-ink truncate">@{cleanUsername}</td>
-                        <td className="p-4">
+                      <tr 
+                        key={user.id} 
+                        className={`flex items-center w-full absolute top-0 left-0 border-b border-gray-50 transition-colors ${isRowEdited ? 'bg-yellow-50/30' : 'hover:bg-gray-50'}`}
+                        style={{
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`
+                        }}
+                      >
+                        <td className="p-4 w-[20%] text-ink truncate">@{cleanUsername}</td>
+                        <td className="p-4 w-[20%]">
                           <input type="date" value={formatDateForInput(displayDate)} onChange={(e) => handleEdit(user.id, 'entryDate', e.target.value)} className={`bg-transparent border ${userEdits.entryDate !== undefined ? 'border-yellow-400 bg-yellow-100/50' : 'border-gray-200'} rounded px-2 py-1 text-xs font-mono w-32 focus:outline-none focus:ring-2 focus:ring-[#5865F2]`} />
                         </td>
-                        <td className="p-4 flex items-center gap-2">
+                        <td className="p-4 w-[25%] flex items-center gap-2">
                           <input type="text" value={displaySymbol} onChange={(e) => handleEdit(user.id, 'symbol', e.target.value.toUpperCase())} className={`bg-transparent border ${userEdits.symbol !== undefined ? 'border-yellow-400 bg-yellow-100/50' : 'border-gray-200'} rounded px-2 py-1 text-xs font-mono uppercase w-28 focus:outline-none focus:ring-2 focus:ring-[#5865F2]`} />
                           <a href={`https://finance.yahoo.com/quote/${displaySymbol}`} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-[#5865F2] transition-colors p-1" title="View on Yahoo Finance"><ExternalLink size={14} /></a>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 w-[15%]">
                           <div className="flex items-center">
                             <span className="text-gray-400 mr-1">₹</span>
                             <input type="number" step="0.01" value={displayPrice} onChange={(e) => handleEdit(user.id, 'entryPrice', parseFloat(e.target.value))} className={`bg-transparent border ${userEdits.entryPrice !== undefined ? 'border-yellow-400 bg-yellow-100/50' : 'border-gray-200'} rounded px-2 py-1 text-xs font-mono w-24 focus:outline-none focus:ring-2 focus:ring-[#5865F2]`} />
                           </div>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 w-[20%]">
                           <select value={displayStatus ? "banned" : "allowed"} onChange={(e) => handleEdit(user.id, 'isExcluded', e.target.value === "banned")} className={`text-xs font-bold border rounded-md px-3 py-1.5 outline-none cursor-pointer transition-all ${userEdits.isExcluded !== undefined ? 'border-yellow-400 bg-yellow-100/50 text-yellow-800' : displayStatus ? 'bg-red-50 text-danger border-red-200' : 'bg-green-50 text-success border-green-200'}`}>
                             <option value="allowed">Allowed</option>
                             <option value="banned">Banned</option>

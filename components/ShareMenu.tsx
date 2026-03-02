@@ -1,20 +1,25 @@
+
 "use client";
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Share2, Download, X } from "lucide-react";
+import { Share2, Download, X, Loader2 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { cn } from "@/lib/utils";
 
 export default function ShareMenu({ targetRef, mode, fileName }: any) {
   const [open, setOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
 
-  const capture = async () => {
-    if (!targetRef?.current) return;
+  const generateImage = async () => {
+    if (!targetRef?.current) return null;
 
+    // useCORS is critical here so Discord avatars don't break the canvas
     const canvas = await html2canvas(targetRef.current, {
       backgroundColor: "#FDFDF8",
       scale: 2,
+      useCORS: true, 
     });
 
     const pad = 20;
@@ -25,31 +30,74 @@ export default function ShareMenu({ targetRef, mode, fileName }: any) {
     const ctx = cropped.getContext("2d")!;
     ctx.drawImage(canvas, -pad, -pad);
 
+    return cropped.toDataURL("image/png");
+  };
+
+  const handleToggle = async (e: any) => {
+    e.stopPropagation(); 
+    if (open) {
+      setOpen(false);
+      setTimeout(() => setPreviewUrl(null), 300); // Clear after exit animation
+    } else {
+      setOpen(true);
+      setIsCapturing(true);
+      const url = await generateImage();
+      setPreviewUrl(url);
+      setIsCapturing(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!previewUrl) return;
     const a = document.createElement("a");
-    a.href = cropped.toDataURL("image/png");
-    a.download = fileName || "arena.png";
+    a.href = previewUrl;
+    a.download = fileName || "isb_stock_mock.png";
     a.click();
+    setOpen(false);
+  };
+
+  const handleShare = async () => {
+    if (!previewUrl) return;
+    
+    try {
+      // Convert Data URL to an actual File object for the Share API
+      const res = await fetch(previewUrl);
+      const blob = await res.blob();
+      const file = new File([blob], fileName || "isb_stock_mock.png", { type: "image/png" });
+      
+      // Native Web Share API (Works perfectly on mobile/tablets for Discord)
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "ISB Stock Mock Snapshot",
+        });
+      } else {
+        // Fallback if browser doesn't support direct file sharing
+        alert("Direct sharing not supported on this browser. Downloading snapshot instead.");
+        handleDownload();
+      }
+    } catch (err) {
+      console.error("Error sharing:", err);
+    }
     setOpen(false);
   };
 
   return (
     <>
-      {/* TRIGGER BUTTON: Changes to Red Circle with White X when open */}
+      {/* TRIGGER BUTTON */}
       <button 
-        onClick={(e) => {
-          e.stopPropagation(); // Prevent bubbling to parent click handlers
-          setOpen(!open);
-        }}
+        onClick={handleToggle}
         className={cn(
           "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 z-[110] relative",
           open 
             ? "bg-red-600 text-white shadow-lg" 
-            : "bg-gray-100 text-gray-400 hover:text-ink hover:bg-gray-200"
+            : "bg-[#5865F2]/10 text-[#5865F2] hover:bg-[#5865F2]/20"
         )}
       >
         {open ? <X size={14} strokeWidth={3} /> : <Share2 size={14} />}
       </button>
 
+      {/* MODAL / BACKDROP */}
       <AnimatePresence>
         {open && (
           <>
@@ -58,7 +106,7 @@ export default function ShareMenu({ targetRef, mode, fileName }: any) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setOpen(false)}
-              className="fixed inset-0 bg-black/50 z-40"
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9998]"
             />
 
             <motion.div
@@ -66,27 +114,51 @@ export default function ShareMenu({ targetRef, mode, fileName }: any) {
               animate={mode === "compact" ? { y: 0 } : { scale: 1, opacity: 1 }}
               exit={mode === "compact" ? { y: "100%" } : { scale: 0.9, opacity: 0 }}
               className={cn(
-                "fixed z-50 bg-white p-6 shadow-2xl",
+                "fixed z-[9999] bg-white p-5 shadow-2xl",
                 mode === "compact"
                   ? "bottom-0 left-0 right-0 rounded-t-xl"
-                  : "bottom-24 right-12 rounded-xl w-64 border border-gray-100"
+                  : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-xl w-[320px] border border-gray-100"
               )}
             >
-              <div className="flex justify-between mb-4 border-b border-gray-100 pb-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Export Menu</span>
-                {/* Secondary close within menu for accessibility */}
-                <button onClick={() => setOpen(false)} className="text-gray-300 hover:text-gray-500">
+              <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Share Snapshot</span>
+                <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-danger transition-colors p-1">
                   <X size={14} />
                 </button>
               </div>
 
-              <button
-                onClick={capture}
-                className="w-full bg-ink text-white p-3 rounded-lg text-xs font-black uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-ink/90 transition-colors"
-              >
-                <Download size={14} />
-                Save Snapshot
-              </button>
+              {/* IMAGE PREVIEW BOX */}
+              <div className="mb-4 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden min-h-[160px] flex items-center justify-center relative shadow-inner">
+                 {isCapturing ? (
+                   <div className="flex flex-col items-center gap-2 text-gray-400">
+                     <Loader2 className="animate-spin" size={20} />
+                     <span className="text-[10px] font-bold uppercase tracking-widest">Generating...</span>
+                   </div>
+                 ) : previewUrl ? (
+                   <img src={previewUrl} alt="Preview" className="w-full h-auto object-contain max-h-[220px]" />
+                 ) : null}
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleShare}
+                  disabled={isCapturing}
+                  className="w-full bg-[#5865F2] text-white p-3 rounded-lg text-xs font-black uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-[#4752C4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Share2 size={14} />
+                  Share Snapshot
+                </button>
+                
+                <button
+                  onClick={handleDownload}
+                  disabled={isCapturing}
+                  className="w-full bg-ink text-white p-3 rounded-lg text-xs font-black uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-ink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download size={14} />
+                  Save to Device
+                </button>
+              </div>
             </motion.div>
           </>
         )}
@@ -94,3 +166,4 @@ export default function ShareMenu({ targetRef, mode, fileName }: any) {
     </>
   );
 }
+

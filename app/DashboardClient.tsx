@@ -5,7 +5,7 @@ import { useLayoutMode } from "@/lib/useLayoutMode";
 import { motion, AnimatePresence } from "framer-motion";
 import { signIn, signOut } from "next-auth/react";
 import Link from "next/link";
-import { Swords, LogOut, Disc, Share2, UserCircle, X } from "lucide-react";
+import { Swords, LogOut, Disc, Share2, UserCircle, X, Info } from "lucide-react";
 
 import BenchmarkBox from "@/components/BenchmarkBox";
 import UserPickBox from "@/components/UserPickBox";
@@ -25,6 +25,7 @@ export default function DashboardClient({
   const [isMock, setIsMock] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [showPendingBanner, setShowPendingBanner] = useState(true);
   
   const headerRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +55,10 @@ export default function DashboardClient({
     const lookupName = isLocal ? "brownbobdowney" : (session?.user?.name || "Dev Mode");
     return seasonStandings.find((u: any) => u.username?.toLowerCase() === lookupName?.toLowerCase()) || null;
   }, [session, seasonStandings, isLoggedIn, isMock]);
+
+  // Determine if the user is logged in but hasn't had a pick assigned yet
+  const isPendingUser = activeUser?.symbol === 'PENDING';
+  const showMiddleColumn = isLoggedIn && activeUser && !isPendingUser;
 
   const userRank = activeUser 
     ? seasonStandings.findIndex((u: any) => u.username === activeUser.username) + 1 
@@ -88,7 +93,7 @@ export default function DashboardClient({
   };
 
   return (
-    <div className="min-h-screen bg-eggshell pt-32 px-4 md:px-8 pb-20 font-sans text-ink">
+    <div className="min-h-screen bg-[#fdfbf7] pt-32 px-4 md:px-8 pb-20 font-sans text-ink">
       
       {/* HEADER */}
       <motion.header 
@@ -101,7 +106,7 @@ export default function DashboardClient({
           
           <div className="flex justify-start">
             {isAdmin && (
-              <Link href="/admin" className="flex items-center gap-2 bg-discord text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-float transition-transform hover:-translate-y-0.5">
+              <Link href="/admin" className="flex items-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-float transition-transform hover:-translate-y-0.5">
                 Go to Admin Console
               </Link>
             )}
@@ -109,19 +114,19 @@ export default function DashboardClient({
 
           <div className="flex justify-center text-center">
             <h1 className="font-black tracking-tighter text-ink uppercase whitespace-nowrap text-2xl">
-              ISB Stock Mock <span className="text-discord">2026</span>
+              ISB Stock Mock <span className="text-[#5865F2]">2026</span>
             </h1>
           </div>
 
           <div className="flex flex-col items-end justify-center h-full">
             <AnimatePresence mode="wait">
                 {isLoggedIn ? (
-                   <motion.button key="in" onClick={handleLogout} className="flex items-center gap-2 text-xs font-black uppercase text-discord">
+                   <motion.button key="in" onClick={handleLogout} className="flex items-center gap-2 text-xs font-black uppercase text-[#5865F2] hover:text-[#4752C4] transition-colors">
                      Sign Out <LogOut size={12} />
                    </motion.button>
                 ) : (
                   <motion.div key="out" className="flex flex-col items-end gap-1">
-                      <button onClick={handleLogin} className="flex items-center gap-2 bg-discord text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-float transition-transform hover:-translate-y-0.5">
+                      <button onClick={handleLogin} className="flex items-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-float transition-transform hover:-translate-y-0.5">
                           <Disc size={16} /> connect your discord avatar
                       </button>
                   </motion.div>
@@ -131,34 +136,58 @@ export default function DashboardClient({
         </div>
       </motion.header>
 
+      {/* PENDING BANNER */}
+      <AnimatePresence>
+        {isLoggedIn && isPendingUser && showPendingBanner && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-[4.5rem] left-0 right-0 z-[90] bg-[#5865F2] text-[#fdfbf7] px-6 py-2.5 flex justify-between items-center text-xs font-bold shadow-md"
+          >
+            <div className="flex items-center gap-2 max-w-[1800px] mx-auto w-full justify-between">
+              <span className="flex items-center gap-2"><Info size={14} /> Welcome to the Arena! Please contact an admin to lock in your stock pick.</span>
+              <button onClick={() => setShowPendingBanner(false)} className="flex items-center gap-1 hover:text-white/80 transition-colors uppercase tracking-wider text-[10px] font-black">
+                Dismiss <X size={14} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* DASHBOARD BODY */}
-      <div className="mx-auto max-w-[1800px] mt-4">
+      <div className="mx-auto max-w-[1800px] mt-4 relative z-0">
         
-        {/* TOP ROW GRID */}
+        {/* TOP ROW GRID - Elevated explicitly over the bottom row */}
         <div className={cn(
-            "grid gap-8 transition-all duration-500 ease-out",
-            isLoggedIn ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1 lg:grid-cols-2"
+            "grid gap-8 transition-all duration-500 ease-out relative z-40",
+            showMiddleColumn ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1 lg:grid-cols-2"
         )}>
           
           {/* Column 1: Benchmarks */}
-          <div className="h-[650px]">
+          <div className="h-[650px] relative z-10">
             <BenchmarkBox benchmarks={benchmarks} />
           </div>
           
           {/* Column 2: User Pick (60%) & Rivalry Box (40%) Stack */}
           <AnimatePresence mode="popLayout">
-            {isLoggedIn && activeUser && (
-              <motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="h-[650px] flex flex-col gap-6">
+            {showMiddleColumn && (
+              <motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="h-[650px] flex flex-col gap-6 relative z-[50]">
                  
                  {/* Top 60%: User Pick Box */}
-                 <div className="flex-[3] min-h-0">
+                 <div className="flex-[3] min-h-0 relative z-10">
                     <UserPickBox user={activeUser} rank={userRank} total={seasonStandings.length} />
                  </div>
                  
                  {/* Bottom 40%: Rivalry Box */}
-                 <div className="flex-[2] min-h-0 relative">
+                 <div className="flex-[2] min-h-0 relative z-[60]">
                     <div className="bg-white border border-gray-200 rounded-xl px-6 py-4 w-full h-full flex flex-col justify-center gap-4 relative shadow-sm group">
                         
+                        {/* Title */}
+                        <div className="text-center text-[10px] font-black uppercase tracking-widest text-gray-400 -mt-2">
+                           Select an opponent from the Arena Roster
+                        </div>
+
                         {/* Actors Row */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 w-[35%]">
@@ -200,7 +229,7 @@ export default function DashboardClient({
                         </div>
 
                         {/* Share Teardrop */}
-                        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-12 h-6 bg-white border-b border-x border-gray-200 rounded-b-full flex items-center justify-center -mt-[1px] z-10 shadow-sm">
+                        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-12 h-6 bg-white border-b border-x border-gray-200 rounded-b-full flex items-center justify-center -mt-[1px] z-[100] shadow-sm">
                             <ShareMenu targetRef={headerRef} fileName="rivalry_status.png" onOpenChange={setIsShareOpen} icon={
                               <div className={cn("p-1 rounded-full transition-all cursor-pointer", isShareOpen ? "bg-danger text-white" : "bg-gray-100 text-gray-400")} onClick={() => setIsShareOpen(!isShareOpen)}>
                                 {isShareOpen ? <X size={12} /> : <Share2 size={12} />}
@@ -215,7 +244,7 @@ export default function DashboardClient({
           </AnimatePresence>
 
           {/* Column 3: Arena Engine */}
-          <div className="h-[650px]">
+          <div className="h-[650px] relative z-10">
              <ArenaEngine
                users={seasonStandings}
                monthlyStandings={monthlyStandings}
@@ -228,8 +257,8 @@ export default function DashboardClient({
 
         </div>
 
-        {/* BOTTOM ROW */}
-        <div className="mt-12">
+        {/* BOTTOM ROW - Forced below the top grid with z-0 */}
+        <div className="mt-12 relative z-0">
           <SeasonHistoryBox monthlyHistory={monthlyHistory} session={session} />
         </div>
       </div>

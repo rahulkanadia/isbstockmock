@@ -1,3 +1,4 @@
+
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -10,7 +11,7 @@ export default async function AdminPage() {
   const session = await getServerSession(authOptions);
   const IS_LOCAL = process.env.NODE_ENV === "development";
 
-  if (!IS_LOCAL && (!session?.user || session.user.adminLevel < 1)) {
+  if (!IS_LOCAL && (!session?.user || (session.user as any).adminLevel < 1)) {
     redirect("/");
   }
 
@@ -22,6 +23,18 @@ export default async function AdminPage() {
   const latestPrice = await prisma.latestPrice.findFirst({
     orderBy: { updatedAt: 'desc' }
   });
+
+  // Fetch the latest 100 audit logs
+  const rawAuditLogs = await prisma.auditLog.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+
+  // Format dates for the client component boundary
+  const auditLogs = rawAuditLogs.map(log => ({
+    ...log,
+    createdAt: log.createdAt.toISOString(),
+  }));
 
   // Category Arrays
   const activeParticipants = users.filter(u => u.pick && u.pick.symbol !== 'PENDING');
@@ -66,5 +79,12 @@ export default async function AdminPage() {
     entryDate: u.pick?.entryDate?.toISOString() || new Date().toISOString()
   }));
 
-  return <AdminConsole initialUsers={tableUsers} admins={admins} stats={stats} />;
+  return (
+    <AdminConsole 
+      initialUsers={tableUsers} 
+      admins={admins} 
+      stats={stats} 
+      auditLogs={auditLogs} 
+    />
+  );
 }
