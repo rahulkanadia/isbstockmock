@@ -14,6 +14,7 @@ import UserPickBox from "@/components/UserPickBox";
 import SeasonHistoryBox from "@/components/SeasonHistoryBox";
 import ArenaEngine from "@/components/ArenaEngine";
 import ShareMenu from "@/components/ShareMenu";
+import RivalryBox from "@/components/RivalryBox";
 
 export default function DashboardClient({
   seasonStandings,
@@ -187,65 +188,27 @@ export default function DashboardClient({
                     <UserPickBox user={activeUser} rank={userRank} total={seasonStandings.length} />
                  </div>
 
-                 {/* Bottom 40%: Rivalry Box */}
+                 {/* Bottom 40%: Rivalry Box (NEW STANDALONE COMPONENT) */}
                  <div className="flex-[2] min-h-0 relative z-[60]">
-                    <div className="bg-white border border-gray-200 rounded-xl px-6 py-4 w-full h-full flex flex-col justify-center gap-4 relative shadow-sm group">
-
-                        {/* Title */}
-                        <div className="text-center text-[10px] font-black uppercase tracking-widest text-gray-400 -mt-2">
-                           Select an opponent from the Arena Roster
-                        </div>
-
-                        {/* Actors Row */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 w-[35%]">
-                                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center border border-gray-200 overflow-hidden text-2xl">
-                                   {leftActor?.isIndex ? (leftActor.username.includes("Nifty") ? ":flag-in:" : ":face_in_clouds:") : (leftActor?.image ? <img src={leftActor.image} className="w-full h-full object-cover" /> : <UserCircle size={24} className="text-gray-400"/>)}
-                                </div>
-                                <span className="text-sm font-black text-gray-700 uppercase truncate">
-                                    {leftActor?.isIndex ? leftActor.username.split(' ')[0] : `@${leftActor?.username}`}
-                                </span>
-                            </div>
-
-                            <div className="flex flex-col items-center justify-center w-[30%]">
-                                <div className="flex items-center gap-1">
-                                    <Swords size={14} className={cn(gap < 0 ? "text-danger" : "text-success")} />
-                                    <span className={cn("font-mono font-black text-xl leading-none", gap >= 0 ? "text-success" : "text-danger")}>
-                                        {gap > 0 ? "+" : ""}{gap.toFixed(2)}%
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-end gap-3 w-[35%]">
-                                <span className="text-sm font-black text-gray-700 uppercase truncate text-right">
-                                    {rightActor?.isIndex ? rightActor.username.split(' ')[0] : `@${rightActor?.username}`}
-                                </span>
-                                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 overflow-hidden text-2xl">
-                                   {rightActor?.isIndex ? (rightActor.username.includes("Nifty") ? ":flag-in:" : ":face_in_clouds:") : (rightActor?.image ? <img src={rightActor.image} className="w-full h-full object-cover" /> : <UserCircle size={24} className="text-gray-400"/>)}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Slider Row */}
-                        <div className="w-full h-3 bg-gray-100 rounded-full relative shadow-inner overflow-visible">
-                           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-danger/20 via-gray-200 to-success/20" />
-                           <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-gray-400 z-0" />
-                           <motion.div 
-                             className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 rounded-full shadow-md z-10", gap >= 0 ? "border-success" : "border-danger")}
-                             animate={{ left: `${sliderPos}%` }} 
-                           />
-                        </div>
-
-                        {/* Share Teardrop */}
-                        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-12 h-6 bg-white border-b border-x border-gray-200 rounded-b-full flex items-center justify-center -mt-[1px] z-[100] shadow-sm">
-                            <ShareMenu targetRef={headerRef} fileName="rivalry_status.png" onOpenChange={setIsShareOpen} icon={
-                              <div className={cn("p-1 rounded-full transition-all cursor-pointer", isShareOpen ? "bg-danger text-white" : "bg-gray-100 text-gray-400")} onClick={() => setIsShareOpen(!isShareOpen)}>
-                                {isShareOpen ? <X size={12} /> : <Share2 size={12} />}
-                              </div>
-                            } />
-                        </div>
-
-                    </div>
+                    {/* Add a placeholder info notice in logged out mode if no nemesis selected */}
+                    <AnimatePresence>
+                      {!isLoggedIn && !nemesis && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-white border-2 border-dashed border-gray-100 rounded-xl flex flex-col items-center justify-center p-6 text-center gap-2 z-10 pointer-events-none">
+                            <Info size={24} className="text-gray-200" />
+                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300">Rivalry Arena</div>
+                            <div className="text-xs font-bold text-gray-400">Click a name in the Compettion Roster<br/>to begin head-to-head tracking</div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    {/* Structure left/right data so component doesn't care who is who */}
+                    {/* We attach the main container Ref here so the box can screenshot the whole dashboard */}
+                    <RivalryBox
+                      leftActor={{ ...leftActor, targetRef: headerRef }} // Attach Ref for capture
+                      rightActor={rightActor}
+                      activeUser={activeUser}
+                      isShareOpen={isShareOpen}
+                      setIsShareOpen={setIsShareOpen}
+                    />
                  </div>
               </motion.div>
             )}

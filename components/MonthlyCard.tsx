@@ -15,8 +15,8 @@ export default function MonthlyCard({ month, year, cohortReturn, winner, isCurre
       {/* HEADER: Year and Month in one line */}
       <div className="flex justify-between items-center border-b border-gray-50 pb-2">
          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-black uppercase text-ink">{month}</span>
-            <span className="text-[10px] font-bold text-gray-400">{year}</span>
+            <span className="text-[14px] font-black uppercase text-ink">{month}</span>
+            <span className="text-[14px] font-bold text-gray-400">{year}</span>
          </div>
          {isCurrent && (
             <span className="bg-discord/10 text-discord text-[8px] font-black uppercase px-2 py-0.5 rounded animate-pulse">
@@ -62,7 +62,7 @@ export default function MonthlyCard({ month, year, cohortReturn, winner, isCurre
                </div>
 
                {/* Row 3: Stock | P&L */}
-               <div className="flex items-center justify-between mt-1 pt-1 border-t border-white/5">
+               <div className="flex items-center justify-between mt-1 pt-0 border-t border-white/5">
                   <span className={cn("text-[12px] font-black", labelColor)}>
                      {winner.pick?.symbol?.split('.')[0]}
                   </span>
