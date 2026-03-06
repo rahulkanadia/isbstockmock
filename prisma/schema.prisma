@@ -40,14 +40,19 @@ model Benchmark {
 }
 
 model LatestPrice {
-  id         String   @id @default(cuid())
-  symbol     String   @unique
-  price      Float
-  seasonHigh Float?
-  seasonLow  Float?
-  dayHigh    Float?   
-  dayLow     Float?   
-  updatedAt  DateTime @updatedAt
+  id         String   @id @default(cuid())
+  symbol     String   @unique
+  price      Float
+  seasonHigh Float?
+  seasonLow  Float?
+  dayHigh    Float?
+  dayLow     Float?
+  
+  // NEW: Portfolio-synchronized trackers
+  groupHigh  Float?   // The price of this specific stock on the exact day the ISB Index peaked
+  groupLow   Float?   // The price of this specific stock on the exact day the ISB Index bottomed
+  
+  updatedAt  DateTime @updatedAt
 }
 
 model MonthlyClose {

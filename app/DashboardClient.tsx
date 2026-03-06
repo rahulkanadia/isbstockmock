@@ -1,3 +1,4 @@
+
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -8,6 +9,7 @@ import Link from "next/link";
 import { Swords, LogOut, Disc, Share2, UserCircle, X, Info } from "lucide-react";
 
 import BenchmarkBox from "@/components/BenchmarkBox";
+import LeaderboardBox from "@/components/LeaderboardBox";
 import UserPickBox from "@/components/UserPickBox";
 import SeasonHistoryBox from "@/components/SeasonHistoryBox";
 import ArenaEngine from "@/components/ArenaEngine";
@@ -26,7 +28,7 @@ export default function DashboardClient({
   const [scrolled, setScrolled] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [showPendingBanner, setShowPendingBanner] = useState(true);
-  
+
   const headerRef = useRef<HTMLDivElement>(null);
 
   // FIX: Persist Mock Login across page reloads in local dev
@@ -37,7 +39,7 @@ export default function DashboardClient({
   }, []);
 
   const isLoggedIn = (!!session?.user || isMock);
-  const isAdmin = session?.user?.adminLevel >= 1 || isMock; 
+  const isAdmin = session?.user?.adminLevel >= 1 || isMock;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -60,15 +62,15 @@ export default function DashboardClient({
   const isPendingUser = activeUser?.symbol === 'PENDING';
   const showMiddleColumn = isLoggedIn && activeUser && !isPendingUser;
 
-  const userRank = activeUser 
-    ? seasonStandings.findIndex((u: any) => u.username === activeUser.username) + 1 
+  const userRank = activeUser
+    ? seasonStandings.findIndex((u: any) => u.username === activeUser.username) + 1
     : 0;
 
   const isb = benchmarks.find((b: any) => b.name === 'ISB Index');
   const nifty = benchmarks.find((b: any) => b.name === 'Nifty 50');
   const isbRet = isb ? isb.current - 100 : 0;
   const niftyRet = nifty ? nifty.current - 100 : 0;
-  
+
   const leftActor = isLoggedIn ? activeUser : (nemesis || { username: "Nifty 50", seasonReturn: niftyRet, isIndex: true });
   const rightActor = isLoggedIn ? (nemesis || { username: "ISB Index", seasonReturn: isbRet, isIndex: true }) : { username: "ISB Index", seasonReturn: isbRet, isIndex: true };
   const gap = (leftActor?.seasonReturn || 0) - (rightActor?.seasonReturn || 0);
@@ -93,17 +95,17 @@ export default function DashboardClient({
   };
 
   return (
-    <div className="min-h-screen bg-[#fdfbf7] pt-32 px-4 md:px-8 pb-20 font-sans text-ink">
-      
+    <div className="min-h-screen bg-[#FDFBF7] pt-32 px-4 md:px-8 pb-20 font-sans text-ink">
+
       {/* HEADER */}
-      <motion.header 
+      <motion.header
         ref={headerRef}
         initial={{ height: "4.5rem" }}
-        animate={{ height: "4.5rem" }} 
+        animate={{ height: "4.5rem" }}
         className="fixed top-0 left-0 right-0 z-[100] transition-all duration-300 px-6 border-b border-gray-200 bg-white/95 backdrop-blur-md shadow-sm flex items-center"
       >
         <div className="relative z-10 w-full max-w-[1800px] mx-auto h-full grid grid-cols-3 items-center">
-          
+
           <div className="flex justify-start">
             {isAdmin && (
               <Link href="/admin" className="flex items-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-float transition-transform hover:-translate-y-0.5">
@@ -139,11 +141,11 @@ export default function DashboardClient({
       {/* PENDING BANNER */}
       <AnimatePresence>
         {isLoggedIn && isPendingUser && showPendingBanner && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-[4.5rem] left-0 right-0 z-[90] bg-[#5865F2] text-[#fdfbf7] px-6 py-2.5 flex justify-between items-center text-xs font-bold shadow-md"
+            className="fixed top-[4.5rem] left-0 right-0 z-[90] bg-[#5865F2] text-[#FDFBF7] px-6 py-2.5 flex justify-between items-center text-xs font-bold shadow-md"
           >
             <div className="flex items-center gap-2 max-w-[1800px] mx-auto w-full justify-between">
               <span className="flex items-center gap-2"><Info size={14} /> Welcome to the Arena! Please contact an admin to lock in your stock pick.</span>
@@ -157,32 +159,38 @@ export default function DashboardClient({
 
       {/* DASHBOARD BODY */}
       <div className="mx-auto max-w-[1800px] mt-4 relative z-0">
-        
-        {/* TOP ROW GRID - Elevated explicitly over the bottom row */}
+
+        {/* TOP ROW GRID */}
         <div className={cn(
             "grid gap-8 transition-all duration-500 ease-out relative z-40",
             showMiddleColumn ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1 lg:grid-cols-2"
         )}>
-          
-          {/* Column 1: Benchmarks */}
-          <div className="h-[650px] relative z-10">
-            <BenchmarkBox benchmarks={benchmarks} />
+
+          {/* Column 1: Benchmarks & Leaderboard Stack */}
+          <div className="flex flex-col gap-6 h-[650px] relative z-10">
+            <div className="flex-1 min-h-0">
+              <BenchmarkBox benchmarks={benchmarks} />
+            </div>
+            <div className="flex-1 min-h-0">
+              {/* Passed the benchmarks array down as marketData for wick rendering */}
+              <LeaderboardBox standings={seasonStandings} marketData={benchmarks} />
+            </div>
           </div>
-          
+
           {/* Column 2: User Pick (60%) & Rivalry Box (40%) Stack */}
           <AnimatePresence mode="popLayout">
             {showMiddleColumn && (
               <motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="h-[650px] flex flex-col gap-6 relative z-[50]">
-                 
+
                  {/* Top 60%: User Pick Box */}
                  <div className="flex-[3] min-h-0 relative z-10">
                     <UserPickBox user={activeUser} rank={userRank} total={seasonStandings.length} />
                  </div>
-                 
+
                  {/* Bottom 40%: Rivalry Box */}
                  <div className="flex-[2] min-h-0 relative z-[60]">
                     <div className="bg-white border border-gray-200 rounded-xl px-6 py-4 w-full h-full flex flex-col justify-center gap-4 relative shadow-sm group">
-                        
+
                         {/* Title */}
                         <div className="text-center text-[10px] font-black uppercase tracking-widest text-gray-400 -mt-2">
                            Select an opponent from the Arena Roster
@@ -192,7 +200,7 @@ export default function DashboardClient({
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 w-[35%]">
                                 <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center border border-gray-200 overflow-hidden text-2xl">
-                                   {leftActor?.isIndex ? (leftActor.username.includes("Nifty") ? "🇮🇳" : "😶‍🌫️") : (leftActor?.image ? <img src={leftActor.image} className="w-full h-full object-cover" /> : <UserCircle size={24} className="text-gray-400"/>)}
+                                   {leftActor?.isIndex ? (leftActor.username.includes("Nifty") ? ":flag-in:" : ":face_in_clouds:") : (leftActor?.image ? <img src={leftActor.image} className="w-full h-full object-cover" /> : <UserCircle size={24} className="text-gray-400"/>)}
                                 </div>
                                 <span className="text-sm font-black text-gray-700 uppercase truncate">
                                     {leftActor?.isIndex ? leftActor.username.split(' ')[0] : `@${leftActor?.username}`}
@@ -213,7 +221,7 @@ export default function DashboardClient({
                                     {rightActor?.isIndex ? rightActor.username.split(' ')[0] : `@${rightActor?.username}`}
                                 </span>
                                 <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 overflow-hidden text-2xl">
-                                   {rightActor?.isIndex ? (rightActor.username.includes("Nifty") ? "🇮🇳" : "😶‍🌫️") : (rightActor?.image ? <img src={rightActor.image} className="w-full h-full object-cover" /> : <UserCircle size={24} className="text-gray-400"/>)}
+                                   {rightActor?.isIndex ? (rightActor.username.includes("Nifty") ? ":flag-in:" : ":face_in_clouds:") : (rightActor?.image ? <img src={rightActor.image} className="w-full h-full object-cover" /> : <UserCircle size={24} className="text-gray-400"/>)}
                                 </div>
                             </div>
                         </div>
@@ -265,3 +273,4 @@ export default function DashboardClient({
     </div>
   );
 }
+

@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --eggshell: #FDFDF8;
-  --ink: #1A1A1B;
-  --discord: #5865F2;
-  --success: #22C55E;
-  --danger: #EF4444;
+  --eggshell:#FDFDF8;
+  --ink:#1A1A1B;
+  --discord:#5865F2;
+  --success:#22C55E;
+  --danger:#EF4444;
 }
 
 body {
