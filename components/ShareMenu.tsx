@@ -29,7 +29,7 @@ export default function ShareMenu({ targetRef }: any) {
     try {
       const dataUrl = await toJpeg(targetRef.current, {
         quality: 0.90,
-        pixelRatio: 1.5,
+        pixelRatio: 2.5,
         backgroundColor: "#FDFBF7",
         filter: (node) => {
           if (node instanceof HTMLElement && node.classList.contains('share-menu-exclude')) {
